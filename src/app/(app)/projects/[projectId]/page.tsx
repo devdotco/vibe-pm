@@ -1,16 +1,18 @@
 "use client";
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, useRef, use } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ProjectListView } from "@/components/pm/project/ProjectListView";
 import { KanbanBoard } from "@/components/pm/board/KanbanBoard";
 import { TaskDetailPanel } from "@/components/pm/task/TaskDetailPanel";
+import PusherClient from "pusher-js";
 
-interface Project { id: string; name: string; color: string; status: string; description: string | null; }
-interface Section { id: string; name: string; position: number; }
+interface Project { id: string; name: string; color: string; status: string; description: string | null; orgId: string; }
+interface Section { id: string; name: string; position: number; color?: string | null; }
 interface Task {
   id: string; title: string; status: string; priority: string; dueDate: string | null;
   assigneeId: string | null; sectionId: string | null; position: number; labels: string[];
   completedAt: string | null; createdAt?: string;
+  assignees?: Array<{ id: string; name: string; email: string }>;
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -26,6 +28,7 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
   const [sections, setSections] = useState<Section[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const pusherRef = useRef<PusherClient | null>(null);
 
   useEffect(() => {
     fetch(`/api/pm/projects/${projectId}`).then(r => r.json()).then(d => setProject(d.project));
@@ -33,13 +36,48 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
     fetch(`/api/pm/projects/${projectId}/tasks`).then(r => r.json()).then(d => setTasks(d.tasks ?? []));
   }, [projectId]);
 
+  // Pusher real-time subscriber
+  useEffect(() => {
+    if (!project?.orgId) return;
+    const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
+    const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER ?? "us2";
+    if (!pusherKey) return;
+
+    const client = new PusherClient(pusherKey, {
+      cluster: pusherCluster,
+      authEndpoint: "/api/pusher/auth",
+    });
+    pusherRef.current = client;
+
+    const channelName = `org-${project.orgId}-project-${projectId}`;
+    const ch = client.subscribe(channelName);
+
+    ch.bind("task.created", (data: Task) => {
+      setTasks(prev => prev.some(t => t.id === data.id) ? prev : [...prev, data]);
+    });
+    ch.bind("task.updated", (data: Task) => {
+      setTasks(prev => prev.map(t => t.id === data.id ? { ...t, ...data } : t));
+    });
+    ch.bind("task.deleted", (data: { id: string }) => {
+      setTasks(prev => prev.filter(t => t.id !== data.id));
+    });
+    ch.bind("section.created", (data: Section) => {
+      setSections(prev => prev.some(s => s.id === data.id) ? prev : [...prev, data]);
+    });
+
+    return () => {
+      client.unsubscribe(channelName);
+      client.disconnect();
+    };
+  }, [project?.orgId, projectId]);
+
   const setView = (v: string) => {
     router.push(`?view=${v}`, { scroll: false });
   };
 
   if (!project) return <div style={{ padding: "32px", color: "var(--text-muted)" }}>Loading...</div>;
 
-  const VIEWS = ["list", "board", "calendar", "timeline"];
+  const VIEWS = ["list", "board", "calendar", "timeline", "milestones"];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -84,6 +122,7 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
         )}
         {view === "calendar" && <CalendarView tasks={tasks} onTaskClick={setSelectedTaskId} />}
         {view === "timeline" && <TimelineView tasks={tasks} sections={sections} onTaskClick={setSelectedTaskId} />}
+        {view === "milestones" && <MilestonesView projectId={projectId} />}
       </div>
 
       {/* Task detail panel */}
@@ -93,6 +132,156 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
           onClose={() => setSelectedTaskId(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ── Milestones View ───────────────────────────────────────────────────────────
+
+interface Milestone {
+  id: string; title: string; description: string | null;
+  dueDate: string; status: string; reachedAt: string | null;
+}
+
+function MilestonesView({ projectId }: { projectId: string }) {
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newDate, setNewDate] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/pm/projects/${projectId}/milestones`)
+      .then(r => r.json())
+      .then(d => { setMilestones(d.milestones ?? []); setLoading(false); });
+  }, [projectId]);
+
+  const createMilestone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim() || !newDate) return;
+    setSaving(true);
+    const res = await fetch(`/api/pm/projects/${projectId}/milestones`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: newTitle.trim(), dueDate: newDate, description: newDesc.trim() || null }),
+    });
+    const d = await res.json();
+    if (d.milestone) {
+      setMilestones(prev => [...prev, d.milestone]);
+      setNewTitle(""); setNewDate(""); setNewDesc(""); setShowNew(false);
+    }
+    setSaving(false);
+  };
+
+  const markReached = async (ms: Milestone) => {
+    if (ms.status === "reached") return;
+    const res = await fetch(`/api/pm/milestones/${ms.id}/reach`, { method: "POST" });
+    const d = await res.json();
+    if (d.milestone) setMilestones(prev => prev.map(m => m.id === ms.id ? d.milestone : m));
+  };
+
+  const deleteMilestone = async (id: string) => {
+    if (!confirm("Delete this milestone?")) return;
+    await fetch(`/api/pm/milestones/${id}`, { method: "DELETE" });
+    setMilestones(prev => prev.filter(m => m.id !== id));
+  };
+
+  if (loading) return <div style={{ padding: "32px", color: "var(--text-muted)" }}>Loading…</div>;
+
+  return (
+    <div style={{ height: "100%", overflowY: "auto", padding: "24px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+        <h2 style={{ fontSize: "16px", fontWeight: 700, color: "var(--text-primary)" }}>Milestones</h2>
+        <button onClick={() => setShowNew(true)} style={{ padding: "7px 14px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", cursor: "pointer" }}>
+          + Add milestone
+        </button>
+      </div>
+
+      {milestones.length === 0 && !showNew && (
+        <div style={{ textAlign: "center", padding: "60px 0", color: "var(--text-muted)" }}>
+          <div style={{ fontSize: "40px", marginBottom: "12px" }}>🏁</div>
+          <div style={{ fontSize: "15px", fontWeight: 500, color: "var(--text-primary)" }}>No milestones yet</div>
+          <div style={{ fontSize: "13px", marginTop: "4px" }}>Create milestones to track key dates and goals.</div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "680px" }}>
+        {milestones.map(ms => {
+          const isReached = ms.status === "reached";
+          const isOverdue = !isReached && new Date(ms.dueDate) < new Date();
+          return (
+            <div key={ms.id} style={{
+              display: "flex", alignItems: "flex-start", gap: "14px", padding: "16px",
+              background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "10px",
+              opacity: isReached ? 0.7 : 1,
+            }}>
+              {/* Status circle */}
+              <button
+                onClick={() => markReached(ms)}
+                title={isReached ? "Reached" : "Mark as reached"}
+                style={{
+                  width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0,
+                  border: `2px solid ${isReached ? "var(--positive)" : isOverdue ? "var(--negative)" : "var(--border)"}`,
+                  background: isReached ? "var(--positive)" : "transparent",
+                  cursor: isReached ? "default" : "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "14px", color: "white",
+                }}
+              >
+                {isReached ? "✓" : ""}
+              </button>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)", textDecoration: isReached ? "line-through" : "none" }}>
+                  {ms.title}
+                </div>
+                {ms.description && (
+                  <div style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "3px" }}>{ms.description}</div>
+                )}
+                <div style={{ marginTop: "6px", display: "flex", gap: "10px", alignItems: "center" }}>
+                  <span style={{ fontSize: "12px", color: isReached ? "var(--positive)" : isOverdue ? "var(--negative)" : "var(--text-muted)" }}>
+                    {isReached ? "Reached" : isOverdue ? "Overdue" : "Due"} {new Date(ms.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </span>
+                  {ms.reachedAt && (
+                    <span style={{ fontSize: "12px", color: "var(--positive)" }}>
+                      · reached {new Date(ms.reachedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => deleteMilestone(ms.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "16px", padding: "2px 4px", flexShrink: 0 }}>×</button>
+            </div>
+          );
+        })}
+
+        {showNew && (
+          <form onSubmit={createMilestone} style={{ padding: "16px", background: "var(--bg-elevated)", border: "1px solid var(--accent)", borderRadius: "10px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <input
+                autoFocus value={newTitle} onChange={e => setNewTitle(e.target.value)}
+                placeholder="Milestone title"
+                style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }}
+              />
+              <input
+                type="date" value={newDate} onChange={e => setNewDate(e.target.value)}
+                required
+                style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }}
+              />
+              <input
+                value={newDesc} onChange={e => setNewDesc(e.target.value)}
+                placeholder="Description (optional)"
+                style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }}
+              />
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button type="button" onClick={() => { setShowNew(false); setNewTitle(""); setNewDate(""); setNewDesc(""); }} style={{ padding: "7px 14px", border: "1px solid var(--border)", borderRadius: "6px", background: "transparent", color: "var(--text-secondary)", fontSize: "13px", cursor: "pointer" }}>Cancel</button>
+                <button type="submit" disabled={saving || !newTitle.trim() || !newDate} style={{ padding: "7px 14px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", cursor: "pointer", opacity: (saving || !newTitle.trim() || !newDate) ? 0.6 : 1 }}>
+                  {saving ? "Saving…" : "Add milestone"}
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

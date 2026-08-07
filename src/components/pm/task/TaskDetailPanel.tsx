@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { StatusSelect } from "@/components/pm/StatusBadge";
 import { PrioritySelect } from "@/components/pm/PriorityBadge";
 import ReactMarkdown from "react-markdown";
@@ -8,9 +7,10 @@ import { formatDistanceToNow, parseISO } from "date-fns";
 
 interface Task {
   id: string; title: string; description: string | null; status: string; priority: string;
-  dueDate: string | null; assigneeId: string | null; sectionId: string | null;
+  dueDate: string | null; startDate: string | null; assigneeId: string | null; sectionId: string | null;
   labels: string[]; projectId: string; sourceMessageId: string | null; sourceChannelId: string | null;
   completedAt: string | null; parentTaskId: string | null;
+  estimatedMinutes: number | null; actualMinutes: number | null;
 }
 interface FeedItem {
   id: string; _type: "activity" | "comment"; content?: string; action?: string;
@@ -19,6 +19,15 @@ interface FeedItem {
 }
 interface SubTask {
   id: string; title: string; status: string; assigneeId: string | null; dueDate: string | null;
+}
+interface Assignee {
+  id: string; name: string; email: string;
+}
+interface Dependency {
+  id: string; taskId: string; dependsOnTaskId: string; type: string;
+}
+interface Attachment {
+  id: string; filename: string; fileType: string; fileSize: number | null; url: string; createdAt: string;
 }
 
 const ACTION_LABELS: Record<string, (a: { oldValue?: string | null; newValue?: string | null }) => string> = {
@@ -36,27 +45,49 @@ const ACTION_LABELS: Record<string, (a: { oldValue?: string | null; newValue?: s
   attachment_added: (a) => `attached ${a.newValue}`,
 };
 
+function Avatar({ name, size = 24 }: { name: string; size?: number }) {
+  const colors = ["#4f46e5", "#0d8f80", "#0f7a52", "#a6620a", "#6d4be0"];
+  const color = colors[name.charCodeAt(0) % colors.length]!;
+  return (
+    <div title={name} style={{ width: size, height: size, borderRadius: "50%", background: color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.42, fontWeight: 600, color: "white", flexShrink: 0 }}>
+      {name.charAt(0).toUpperCase()}
+    </div>
+  );
+}
+
 export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: () => void }) {
   const [task, setTask] = useState<Task | null>(null);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [subtasks, setSubtasks] = useState<SubTask[]>([]);
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
+  const [dependencies, setDependencies] = useState<Dependency[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [comment, setComment] = useState("");
   const [markdownPreview, setMarkdownPreview] = useState(false);
   const [addingSubtask, setAddingSubtask] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [showLabelInput, setShowLabelInput] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [showDepInput, setShowDepInput] = useState(false);
+  const [depTaskId, setDepTaskId] = useState("");
+  const [depType, setDepType] = useState("finish_to_start");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const loadAll = useCallback(() => {
     fetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => setTask(d.task));
     fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
     fetch(`/api/pm/tasks/${taskId}/subtasks`).then(r => r.json()).then(d => setSubtasks(d.subtasks ?? []));
+    fetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json()).then(d => setAssignees(d.assignees ?? []));
+    fetch(`/api/pm/tasks/${taskId}/dependencies`).then(r => r.json()).then(d => setDependencies(d.dependencies ?? []));
+    fetch(`/api/pm/tasks/${taskId}/attachments`).then(r => r.json()).then(d => setAttachments(d.attachments ?? []));
   }, [taskId]);
 
+  useEffect(() => { loadAll(); }, [loadAll]);
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
   const save = useCallback((patch: Partial<Task>) => {
@@ -64,28 +95,21 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     setTask(t => t ? { ...t, ...patch } : t);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
-      await fetch(`/api/pm/tasks/${taskId}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
-      });
-      // refresh feed
+      await fetch(`/api/pm/tasks/${taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
       fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
     }, 500);
   }, [task, taskId]);
 
   const postComment = async () => {
     if (!comment.trim()) return;
-    await fetch(`/api/pm/tasks/${taskId}/comments`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: comment.trim() }),
-    });
+    await fetch(`/api/pm/tasks/${taskId}/comments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: comment.trim() }) });
     setComment("");
     fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
   };
 
   const addSubtask = async () => {
     if (!newSubtaskTitle.trim()) return;
-    const res = await fetch(`/api/pm/tasks/${taskId}/subtasks`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: newSubtaskTitle.trim() }),
-    });
+    const res = await fetch(`/api/pm/tasks/${taskId}/subtasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: newSubtaskTitle.trim() }) });
     const d = await res.json();
     if (d.subtask) setSubtasks(s => [...s, d.subtask]);
     setNewSubtaskTitle(""); setAddingSubtask(false);
@@ -103,66 +127,162 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     setTask(t => t ? { ...t, status: "completed", completedAt: new Date().toISOString() } : t);
   };
 
+  const addLabel = async () => {
+    if (!newLabel.trim() || !task) return;
+    const updated = [...new Set([...(task.labels ?? []), newLabel.trim()])];
+    save({ labels: updated });
+    setNewLabel(""); setShowLabelInput(false);
+  };
+
+  const removeLabel = (label: string) => {
+    if (!task) return;
+    save({ labels: task.labels.filter(l => l !== label) });
+  };
+
+  const addDependency = async () => {
+    if (!depTaskId.trim()) return;
+    const res = await fetch(`/api/pm/tasks/${taskId}/dependencies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dependsOnTaskId: depTaskId.trim(), type: depType }) });
+    const d = await res.json();
+    if (d.dependency) { setDependencies(prev => [...prev, d.dependency]); setDepTaskId(""); setShowDepInput(false); }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !task) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`/api/pm/tasks/${taskId}/attachments/upload`, { method: "POST", body: formData });
+    const d = await res.json() as { attachment?: Attachment };
+    if (d.attachment) setAttachments(prev => [...prev, d.attachment!]);
+    e.target.value = "";
+  };
+
   if (!task) return (
     <div style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: "520px", background: "var(--bg-elevated)", borderLeft: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", zIndex: 100 }}>
       Loading...
     </div>
   );
 
+  const fieldLabel = (text: string) => (
+    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase" }}>{text}</div>
+  );
+
+  const dateInput = (value: string | null, onChange: (v: string | null) => void) => (
+    <input type="date" value={value ?? ""} onChange={e => onChange(e.target.value || null)}
+      style={{ padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", cursor: "pointer" }} />
+  );
+
   return (
     <>
-      {/* Overlay */}
       <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 99 }} />
-
-      {/* Panel */}
-      <div style={{
-        position: "fixed", right: 0, top: 0, bottom: 0, width: "520px", maxWidth: "100vw",
-        background: "var(--bg-elevated)", borderLeft: "1px solid var(--border)",
-        display: "flex", flexDirection: "column", zIndex: 100,
-        boxShadow: "-4px 0 24px rgba(0,0,0,0.08)",
-      }}>
+      <div style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: "540px", maxWidth: "100vw", background: "var(--bg-elevated)", borderLeft: "1px solid var(--border)", display: "flex", flexDirection: "column", zIndex: 100, boxShadow: "-4px 0 24px rgba(0,0,0,0.08)" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "16px 20px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-          <input
-            type="checkbox"
-            checked={task.status === "completed"}
-            onChange={complete}
-            style={{ width: "16px", height: "16px", accentColor: "var(--positive)", cursor: "pointer", flexShrink: 0 }}
-          />
-          <input
-            value={task.title}
-            onChange={e => save({ title: e.target.value })}
-            style={{ flex: 1, border: "none", background: "transparent", fontSize: "16px", fontWeight: 600, color: "var(--text-primary)", outline: "none" }}
-          />
+          <input type="checkbox" checked={task.status === "completed"} onChange={complete}
+            style={{ width: "16px", height: "16px", accentColor: "var(--positive)", cursor: "pointer", flexShrink: 0 }} />
+          <input value={task.title} onChange={e => save({ title: e.target.value })}
+            style={{ flex: 1, border: "none", background: "transparent", fontSize: "16px", fontWeight: 600, color: "var(--text-primary)", outline: "none" }} />
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "20px", lineHeight: 1, padding: "0 2px" }}>×</button>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto" }}>
-          {/* Metadata */}
+          {/* Metadata grid */}
           <div style={{ padding: "16px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", borderBottom: "1px solid var(--border)" }}>
-            <div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase" }}>Status</div>
-              <StatusSelect value={task.status} onChange={v => save({ status: v })} />
+            <div>{fieldLabel("Status")}<StatusSelect value={task.status} onChange={v => save({ status: v })} /></div>
+            <div>{fieldLabel("Priority")}<PrioritySelect value={task.priority} onChange={v => save({ priority: v })} /></div>
+            <div>{fieldLabel("Start date")}{dateInput(task.startDate, v => save({ startDate: v }))}</div>
+            <div>{fieldLabel("Due date")}{dateInput(task.dueDate, v => save({ dueDate: v }))}</div>
+          </div>
+
+          {/* Assignees */}
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
+            {fieldLabel("Assignees")}
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+              {assignees.map(a => (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "20px", background: "var(--panel-hover)", fontSize: "12px", color: "var(--text-primary)" }}>
+                  <Avatar name={a.name} size={18} />
+                  {a.name}
+                  <button onClick={async () => {
+                    await fetch(`/api/pm/tasks/${taskId}/assignees/${a.id}`, { method: "DELETE" });
+                    setAssignees(prev => prev.filter(x => x.id !== a.id));
+                  }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "12px", lineHeight: 1, padding: "0", marginLeft: "2px" }}>×</button>
+                </div>
+              ))}
+              <button
+                onClick={() => {
+                  const userId = prompt("Enter user ID to assign:");
+                  if (userId?.trim()) {
+                    fetch(`/api/pm/tasks/${taskId}/assignees`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: userId.trim() }) })
+                      .then(r => r.json())
+                      .then(() => fetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json()).then(d => setAssignees(d.assignees ?? [])));
+                  }
+                }}
+                style={{ fontSize: "12px", color: "var(--accent)", background: "none", border: "1px dashed var(--border)", padding: "3px 8px", borderRadius: "20px", cursor: "pointer" }}
+              >
+                + Add
+              </button>
             </div>
-            <div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase" }}>Priority</div>
-              <PrioritySelect value={task.priority} onChange={v => save({ priority: v })} />
+          </div>
+
+          {/* Labels */}
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
+            {fieldLabel("Labels")}
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+              {(task.labels ?? []).map(label => (
+                <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", background: "var(--accent-subtle)", color: "var(--accent)", border: "1px solid var(--accent)", fontWeight: 500 }}>
+                  {label}
+                  <button onClick={() => removeLabel(label)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: "12px", lineHeight: 1, padding: 0 }}>×</button>
+                </span>
+              ))}
+              {showLabelInput ? (
+                <div style={{ display: "flex", gap: "4px" }}>
+                  <input autoFocus value={newLabel} onChange={e => setNewLabel(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") addLabel(); if (e.key === "Escape") { setShowLabelInput(false); setNewLabel(""); } }}
+                    placeholder="Label name" style={{ padding: "2px 8px", border: "1px solid var(--border)", borderRadius: "10px", fontSize: "11px", background: "var(--bg)", color: "var(--text-primary)", outline: "none", width: "100px" }} />
+                  <button onClick={addLabel} style={{ padding: "2px 7px", background: "var(--accent)", color: "white", border: "none", borderRadius: "10px", fontSize: "11px", cursor: "pointer" }}>Add</button>
+                  <button onClick={() => setShowLabelInput(false)} style={{ padding: "2px 7px", background: "none", border: "1px solid var(--border)", borderRadius: "10px", fontSize: "11px", cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+                </div>
+              ) : (
+                <button onClick={() => setShowLabelInput(true)} style={{ fontSize: "11px", color: "var(--text-muted)", background: "none", border: "1px dashed var(--border)", padding: "2px 8px", borderRadius: "10px", cursor: "pointer" }}>
+                  + Add label
+                </button>
+              )}
             </div>
-            <div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px", fontWeight: 600, textTransform: "uppercase" }}>Due date</div>
-              <input
-                type="date"
-                value={task.dueDate ?? ""}
-                onChange={e => save({ dueDate: e.target.value || null })}
-                style={{ padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", cursor: "pointer" }}
-              />
+          </div>
+
+          {/* Time tracking */}
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
+            {fieldLabel("Time tracking")}
+            <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "var(--text-secondary)" }}>
+                Estimated:
+                <input type="number" min={0} value={task.estimatedMinutes ?? ""}
+                  onChange={e => save({ estimatedMinutes: e.target.value ? Number(e.target.value) : null })}
+                  style={{ width: "70px", padding: "3px 6px", border: "1px solid var(--border)", borderRadius: "5px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }} />
+                min
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "var(--text-secondary)" }}>
+                Actual:
+                <input type="number" min={0} value={task.actualMinutes ?? ""}
+                  onChange={e => save({ actualMinutes: e.target.value ? Number(e.target.value) : null })}
+                  style={{ width: "70px", padding: "3px 6px", border: "1px solid var(--border)", borderRadius: "5px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }} />
+                min
+              </label>
+              {task.estimatedMinutes && task.actualMinutes && task.estimatedMinutes > 0 && (
+                <div style={{ flex: 1, minWidth: "80px" }}>
+                  <div style={{ height: "4px", background: "var(--border)", borderRadius: "2px", overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${Math.min(100, (task.actualMinutes / task.estimatedMinutes) * 100)}%`, background: task.actualMinutes > task.estimatedMinutes ? "var(--negative)" : "var(--positive)", borderRadius: "2px" }} />
+                  </div>
+                  <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>{Math.round((task.actualMinutes / task.estimatedMinutes) * 100)}%</div>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Description */}
           <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-              <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>Description</div>
+              {fieldLabel("Description")}
               <button onClick={() => setMarkdownPreview(p => !p)} style={{ fontSize: "11px", color: "var(--accent)", background: "none", border: "none", cursor: "pointer" }}>
                 {markdownPreview ? "Edit" : "Preview"}
               </button>
@@ -172,13 +292,9 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                 {task.description ? <ReactMarkdown>{task.description}</ReactMarkdown> : <span style={{ color: "var(--text-muted)" }}>No description</span>}
               </div>
             ) : (
-              <textarea
-                value={task.description ?? ""}
-                onChange={e => save({ description: e.target.value })}
-                placeholder="Add a description..."
-                rows={4}
-                style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", resize: "vertical", outline: "none", fontFamily: "inherit" }}
-              />
+              <textarea value={task.description ?? ""} onChange={e => save({ description: e.target.value })}
+                placeholder="Add a description..." rows={4}
+                style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", resize: "vertical", outline: "none", fontFamily: "inherit" }} />
             )}
           </div>
 
@@ -209,12 +325,72 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
             )}
           </div>
 
-          {/* Source message banner */}
+          {/* Dependencies */}
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+              {fieldLabel("Dependencies")}
+              <button onClick={() => setShowDepInput(v => !v)} style={{ fontSize: "11px", color: "var(--accent)", background: "none", border: "none", cursor: "pointer" }}>+ Add</button>
+            </div>
+            {dependencies.length === 0 && !showDepInput && (
+              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>No dependencies.</div>
+            )}
+            {dependencies.map(dep => (
+              <div key={dep.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "3px 0", fontSize: "12px", color: "var(--text-secondary)" }}>
+                <span style={{ color: "var(--text-muted)" }}>{dep.type === "finish_to_start" ? "Waiting on" : "Blocks"}</span>
+                <span style={{ fontFamily: "monospace", fontSize: "11px" }}>{dep.dependsOnTaskId.slice(0, 8)}…</span>
+                <button onClick={async () => {
+                  await fetch(`/api/pm/tasks/${taskId}/dependencies/${dep.id}`, { method: "DELETE" });
+                  setDependencies(prev => prev.filter(d => d.id !== dep.id));
+                }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "12px", marginLeft: "auto" }}>×</button>
+              </div>
+            ))}
+            {showDepInput && (
+              <div style={{ display: "flex", gap: "6px", marginTop: "6px", alignItems: "center" }}>
+                <select value={depType} onChange={e => setDepType(e.target.value)} style={{ padding: "4px 6px", border: "1px solid var(--border)", borderRadius: "4px", fontSize: "11px", background: "var(--bg)", color: "var(--text-primary)" }}>
+                  <option value="finish_to_start">Waiting on</option>
+                  <option value="blocks">Blocks</option>
+                </select>
+                <input value={depTaskId} onChange={e => setDepTaskId(e.target.value)}
+                  placeholder="Task UUID" style={{ flex: 1, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "4px", fontSize: "12px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }} />
+                <button onClick={addDependency} style={{ padding: "4px 10px", background: "var(--accent)", color: "white", border: "none", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}>Add</button>
+              </div>
+            )}
+          </div>
+
+          {/* Attachments */}
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+              {fieldLabel("Attachments")}
+              <button onClick={() => fileInputRef.current?.click()} style={{ fontSize: "11px", color: "var(--accent)", background: "none", border: "none", cursor: "pointer" }}>+ Upload</button>
+            </div>
+            <input ref={fileInputRef} type="file" style={{ display: "none" }} onChange={handleFileUpload} />
+            {attachments.length === 0 ? (
+              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>No attachments.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                {attachments.map(att => (
+                  <div key={att.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", background: "var(--panel-hover)", borderRadius: "5px" }}>
+                    <span style={{ fontSize: "14px" }}>📎</span>
+                    <a href={att.url} target="_blank" rel="noreferrer" style={{ fontSize: "12px", color: "var(--accent)", textDecoration: "none", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {att.filename}
+                    </a>
+                    {att.fileSize && (
+                      <span style={{ fontSize: "10px", color: "var(--text-muted)", flexShrink: 0 }}>
+                        {att.fileSize > 1024 * 1024 ? `${(att.fileSize / 1024 / 1024).toFixed(1)}MB` : `${Math.round(att.fileSize / 1024)}KB`}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Source message */}
           {task.sourceMessageId && (
             <div style={{ margin: "16px 20px", padding: "10px 14px", background: "var(--ai-subtle)", border: "1px solid var(--ai)", borderRadius: "8px", fontSize: "13px", color: "var(--ai)" }}>
               Created from a message{task.sourceChannelId ? ` in #${task.sourceChannelId}` : ""}.{" "}
-              <a href={`https://messaging.vb.co/channels/${task.sourceChannelId}?msg=${task.sourceMessageId}`} target="_blank" rel="noreferrer" style={{ color: "var(--ai)", fontWeight: 500 }}>
-                View original message →
+              <a href={`https://chat.vb.co/channels/${task.sourceChannelId}?msg=${task.sourceMessageId}`} target="_blank" rel="noreferrer" style={{ color: "var(--ai)", fontWeight: 500 }}>
+                View original →
               </a>
             </div>
           )}
@@ -230,9 +406,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                   </div>
                   <div style={{ flex: 1 }}>
                     {item._type === "comment" ? (
-                      <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)" }}>
-                        {item.content}
-                      </div>
+                      <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)" }}>{item.content}</div>
                     ) : (
                       <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
                         <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{item.userName ?? item.userId.slice(0, 8)}</span>
@@ -246,20 +420,11 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                 </div>
               ))}
             </div>
-
-            {/* Comment input */}
             <div style={{ marginTop: "16px" }}>
-              <textarea
-                value={comment}
-                onChange={e => setComment(e.target.value)}
-                placeholder="Add a comment..."
-                rows={3}
-                style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit" }}
-              />
+              <textarea value={comment} onChange={e => setComment(e.target.value)} placeholder="Add a comment..." rows={3}
+                style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit" }} />
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "6px" }}>
-                <button onClick={postComment} disabled={!comment.trim()} style={{ padding: "6px 14px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer", opacity: comment.trim() ? 1 : 0.5 }}>
-                  Post
-                </button>
+                <button onClick={postComment} disabled={!comment.trim()} style={{ padding: "6px 14px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer", opacity: comment.trim() ? 1 : 0.5 }}>Post</button>
               </div>
             </div>
           </div>

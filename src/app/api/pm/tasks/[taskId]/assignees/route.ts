@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { taskAssignees, tasks } from '@/lib/db/schema';
+import { taskAssignees, tasks, users } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { eq, and } from 'drizzle-orm';
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
+  const user = await requireUser();
+  const { taskId } = await params;
+  const rows = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(taskAssignees)
+    .innerJoin(users, eq(taskAssignees.userId, users.id))
+    .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.orgId, user.orgId)));
+  return NextResponse.json({ assignees: rows });
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   const user = await requireUser();

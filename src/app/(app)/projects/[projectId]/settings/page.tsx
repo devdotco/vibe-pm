@@ -1,7 +1,11 @@
 "use client";
 import { useState, useEffect, use } from "react";
 
-interface Project { id: string; name: string; description: string | null; color: string; status: string; }
+interface Project {
+  id: string; name: string; description: string | null; color: string; status: string;
+  icon: string | null; defaultView: string; isPublic: boolean;
+  startDate: string | null; dueDate: string | null;
+}
 interface ProjectSettings { messagingChannelId: string | null; notifyOn: string[]; }
 interface Member { id: string; projectId: string; userId: string; role: string; joinedAt: string; userName: string | null; userEmail: string | null; userAvatarUrl: string | null; }
 interface OrgUser { id: string; name: string; email: string; status: string; }
@@ -85,6 +89,79 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
               <option value="archived">Archived</option>
             </select>
           </label>
+          {/* Icon (emoji) */}
+          <label>
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase" }}>Icon (emoji)</div>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <span style={{ fontSize: "28px", lineHeight: 1 }}>{project.icon ?? "📋"}</span>
+              <input
+                value={project.icon ?? ""}
+                onChange={e => setProject(p => p ? { ...p, icon: e.target.value } : p)}
+                onBlur={e => saveProject({ icon: e.target.value || null })}
+                placeholder="e.g. 🚀"
+                maxLength={4}
+                style={{ width: "80px", padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "18px", background: "var(--bg)", color: "var(--text-primary)", outline: "none", textAlign: "center" }}
+              />
+            </div>
+          </label>
+
+          {/* Default view */}
+          <label>
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase" }}>Default view</div>
+            <select
+              value={project.defaultView}
+              onChange={e => { setProject(p => p ? { ...p, defaultView: e.target.value } : p); saveProject({ defaultView: e.target.value }); }}
+              style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", cursor: "pointer" }}
+            >
+              <option value="list">List</option>
+              <option value="board">Board</option>
+              <option value="calendar">Calendar</option>
+              <option value="timeline">Timeline</option>
+              <option value="milestones">Milestones</option>
+            </select>
+          </label>
+
+          {/* Dates */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <label>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase" }}>Start date</div>
+              <input
+                type="date"
+                value={project.startDate ?? ""}
+                onChange={e => setProject(p => p ? { ...p, startDate: e.target.value || null } : p)}
+                onBlur={e => saveProject({ startDate: e.target.value || null })}
+                style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }}
+              />
+            </label>
+            <label>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase" }}>Due date</div>
+              <input
+                type="date"
+                value={project.dueDate ?? ""}
+                onChange={e => setProject(p => p ? { ...p, dueDate: e.target.value || null } : p)}
+                onBlur={e => saveProject({ dueDate: e.target.value || null })}
+                style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }}
+              />
+            </label>
+          </div>
+
+          {/* Visibility */}
+          <div>
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", marginBottom: "8px", textTransform: "uppercase" }}>Visibility</div>
+            <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={project.isPublic}
+                onChange={e => { setProject(p => p ? { ...p, isPublic: e.target.checked } : p); saveProject({ isPublic: e.target.checked }); }}
+                style={{ width: "15px", height: "15px", accentColor: "var(--accent)", cursor: "pointer" }}
+              />
+              <div>
+                <div style={{ fontSize: "14px", color: "var(--text-primary)" }}>Public project</div>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>All workspace members can view this project</div>
+              </div>
+            </label>
+          </div>
+
           {saving && <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Saving...</div>}
         </div>
       )}
