@@ -965,7 +965,7 @@ export function ProjectListView({
 
                   {/* Inline add task */}
                   {addingInSection === group.key ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 12px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                    <div ref={el => el?.scrollIntoView({ block: "nearest", behavior: "smooth" })} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 12px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                       <div style={{ width: "8px", flexShrink: 0 }} />
                       <div style={{ width: "16px", height: "16px", borderRadius: "50%", border: "2px solid var(--border-strong, #cbd5e1)", flexShrink: 0 }} />
                       <div style={{ width: "16px", flexShrink: 0 }} />

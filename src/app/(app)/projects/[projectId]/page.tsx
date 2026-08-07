@@ -152,6 +152,10 @@ function MilestonesView({ projectId }: { projectId: string }) {
   const [newDate, setNewDate] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editDesc, setEditDesc] = useState("");
 
   useEffect(() => {
     fetch(`/api/pm/projects/${projectId}/milestones`)
@@ -175,11 +179,29 @@ function MilestonesView({ projectId }: { projectId: string }) {
     setSaving(false);
   };
 
-  const markReached = async (ms: Milestone) => {
-    if (ms.status === "reached") return;
-    const res = await fetch(`/api/pm/milestones/${ms.id}/reach`, { method: "POST" });
+  const toggleReached = async (ms: Milestone) => {
+    const method = ms.status === "reached" ? "DELETE" : "POST";
+    const res = await fetch(`/api/pm/milestones/${ms.id}/reach`, { method });
     const d = await res.json();
     if (d.milestone) setMilestones(prev => prev.map(m => m.id === ms.id ? d.milestone : m));
+  };
+
+  const startEdit = (ms: Milestone) => {
+    setEditingId(ms.id);
+    setEditTitle(ms.title);
+    setEditDate(ms.dueDate.slice(0, 10));
+    setEditDesc(ms.description ?? "");
+  };
+
+  const saveEdit = async (ms: Milestone) => {
+    if (!editTitle.trim() || !editDate) return;
+    const res = await fetch(`/api/pm/milestones/${ms.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: editTitle.trim(), dueDate: editDate, description: editDesc.trim() || null }),
+    });
+    const d = await res.json();
+    if (d.milestone) setMilestones(prev => prev.map(m => m.id === ms.id ? d.milestone : m));
+    setEditingId(null);
   };
 
   const deleteMilestone = async (id: string) => {
@@ -211,46 +233,57 @@ function MilestonesView({ projectId }: { projectId: string }) {
         {milestones.map(ms => {
           const isReached = ms.status === "reached";
           const isOverdue = !isReached && new Date(ms.dueDate) < new Date();
+          const isEditing = editingId === ms.id;
           return (
             <div key={ms.id} style={{
-              display: "flex", alignItems: "flex-start", gap: "14px", padding: "16px",
               background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "10px",
-              opacity: isReached ? 0.7 : 1,
+              opacity: isReached ? 0.75 : 1, overflow: "hidden",
             }}>
-              {/* Status circle */}
-              <button
-                onClick={() => markReached(ms)}
-                title={isReached ? "Reached" : "Mark as reached"}
-                style={{
-                  width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0,
-                  border: `2px solid ${isReached ? "var(--positive)" : isOverdue ? "var(--negative)" : "var(--border)"}`,
-                  background: isReached ? "var(--positive)" : "transparent",
-                  cursor: isReached ? "default" : "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: "14px", color: "white",
-                }}
-              >
-                {isReached ? "✓" : ""}
-              </button>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)", textDecoration: isReached ? "line-through" : "none" }}>
-                  {ms.title}
+              {isEditing ? (
+                <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <input autoFocus value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                    style={{ padding: "7px 10px", border: "1px solid var(--accent)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }} />
+                  <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
+                    style={{ padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }} />
+                  <input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="Description (optional)"
+                    style={{ padding: "7px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }} />
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button onClick={() => setEditingId(null)} style={{ padding: "6px 12px", border: "1px solid var(--border)", borderRadius: "6px", background: "transparent", color: "var(--text-secondary)", fontSize: "13px", cursor: "pointer" }}>Cancel</button>
+                    <button onClick={() => saveEdit(ms)} style={{ padding: "6px 12px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", cursor: "pointer" }}>Save</button>
+                  </div>
                 </div>
-                {ms.description && (
-                  <div style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "3px" }}>{ms.description}</div>
-                )}
-                <div style={{ marginTop: "6px", display: "flex", gap: "10px", alignItems: "center" }}>
-                  <span style={{ fontSize: "12px", color: isReached ? "var(--positive)" : isOverdue ? "var(--negative)" : "var(--text-muted)" }}>
-                    {isReached ? "Reached" : isOverdue ? "Overdue" : "Due"} {new Date(ms.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                  </span>
-                  {ms.reachedAt && (
-                    <span style={{ fontSize: "12px", color: "var(--positive)" }}>
-                      · reached {new Date(ms.reachedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                    </span>
-                  )}
+              ) : (
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", padding: "16px" }}>
+                  <button
+                    onClick={() => toggleReached(ms)}
+                    title={isReached ? "Click to unmark" : "Mark as reached"}
+                    style={{
+                      width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0,
+                      border: `2px solid ${isReached ? "var(--positive)" : isOverdue ? "var(--negative)" : "var(--border)"}`,
+                      background: isReached ? "var(--positive)" : "transparent",
+                      cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: "14px", color: "white",
+                    }}
+                  >
+                    {isReached ? "✓" : ""}
+                  </button>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)", textDecoration: isReached ? "line-through" : "none" }}>{ms.title}</div>
+                    {ms.description && <div style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "3px" }}>{ms.description}</div>}
+                    <div style={{ marginTop: "6px", display: "flex", gap: "10px", alignItems: "center" }}>
+                      <span style={{ fontSize: "12px", color: isReached ? "var(--positive)" : isOverdue ? "var(--negative)" : "var(--text-muted)" }}>
+                        {isReached ? "Reached" : isOverdue ? "Overdue" : "Due"} {new Date(ms.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                      {ms.reachedAt && <span style={{ fontSize: "12px", color: "var(--positive)" }}>· reached {new Date(ms.reachedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
+                    <button onClick={() => startEdit(ms)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "13px", padding: "2px 6px" }} title="Edit">✏️</button>
+                    <button onClick={() => deleteMilestone(ms.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "16px", padding: "2px 4px" }}>×</button>
+                  </div>
                 </div>
-              </div>
-              <button onClick={() => deleteMilestone(ms.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "16px", padding: "2px 4px", flexShrink: 0 }}>×</button>
+              )}
             </div>
           );
         })}

@@ -2,12 +2,19 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { tasks, projects, sections, taskComments, taskAssignees, users } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
-import { eq, and, isNull, asc, sql, inArray } from 'drizzle-orm';
+import { eq, and, isNull, asc, sql, inArray, or } from 'drizzle-orm';
 
 export async function GET() {
   const user = await requireUser();
 
-  // Base tasks for this user (via legacy assigneeId)
+  // Find all task IDs where user is assigned via the multi-assignee table
+  const assigneeTaskRows = await db
+    .select({ taskId: taskAssignees.taskId })
+    .from(taskAssignees)
+    .where(eq(taskAssignees.userId, user.id));
+  const assigneeTaskIds = assigneeTaskRows.map(r => r.taskId);
+
+  // Tasks where user is assignee (legacy single-assignee OR multi-assignee table)
   const rows = await db
     .select({
       task: tasks,
@@ -18,7 +25,14 @@ export async function GET() {
     .from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id))
     .leftJoin(sections, eq(tasks.sectionId, sections.id))
-    .where(and(eq(tasks.assigneeId, user.id), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt)))
+    .where(and(
+      eq(tasks.orgId, user.orgId),
+      isNull(tasks.deletedAt),
+      or(
+        eq(tasks.assigneeId, user.id),
+        assigneeTaskIds.length > 0 ? inArray(tasks.id, assigneeTaskIds) : sql`false`,
+      ),
+    ))
     .orderBy(asc(tasks.dueDate));
 
   if (rows.length === 0) return NextResponse.json({ tasks: [] });

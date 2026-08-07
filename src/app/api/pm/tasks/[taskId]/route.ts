@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks, projects, automations, taskAssignees, users } from '@/lib/db/schema';
+import { tasks, projects, automations, taskAssignees, users, sections } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { fireProjectWebhooks } from '@/lib/webhooks';
@@ -24,6 +24,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
   const [existing] = await db.select().from(tasks)
     .where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt)));
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  // When status changes, auto-move to the matching section on the board
+  const STATUS_TO_SECTION: Record<string, string> = {
+    not_started: 'To Do',
+    in_progress: 'In Progress',
+    blocked: 'Blocked',
+  };
+  if (body.status && body.status !== existing.status && STATUS_TO_SECTION[body.status] && !body.sectionId) {
+    const projectSections = await db.select().from(sections)
+      .where(and(eq(sections.projectId, existing.projectId), eq(sections.orgId, user.orgId)));
+    const match = projectSections.find(s =>
+      s.name.toLowerCase() === STATUS_TO_SECTION[body.status]!.toLowerCase()
+    );
+    if (match) body.sectionId = match.id;
+  }
 
   const [task] = await db.transaction(async (tx) => {
     const [updated] = await tx.update(tasks).set({ ...body, updatedAt: new Date() })
