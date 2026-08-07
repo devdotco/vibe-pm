@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks, projects, automations, taskAssignees } from '@/lib/db/schema';
+import { tasks, projects, automations, taskAssignees, users } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { fireProjectWebhooks } from '@/lib/webhooks';
 import { pusherServer, projectChannel } from '@/lib/pusher/server';
 import { eq, and, isNull } from 'drizzle-orm';
+import { sendTaskAssignedEmail } from '@/lib/email/notifications';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   const user = await requireUser();
@@ -47,6 +48,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
   });
 
   pusherServer.trigger(projectChannel(existing.projectId, user.orgId), 'task.updated', { task }).catch(() => {});
+
+  // email notification: assignee changed
+  if (body.assigneeId !== undefined && body.assigneeId !== existing.assigneeId && body.assigneeId) {
+    (async () => {
+      const [proj] = await db.select({ name: projects.name }).from(projects)
+        .where(eq(projects.id, existing.projectId)).limit(1);
+      const [assignee] = await db.select({ email: users.email, name: users.name })
+        .from(users).where(eq(users.id, body.assigneeId)).limit(1);
+      if (proj && assignee && assignee.email !== user.email) {
+        sendTaskAssignedEmail({
+          taskId,
+          taskTitle: task.title,
+          projectName: proj.name,
+          recipientEmail: assignee.email,
+          recipientName: assignee.name,
+          actorName: user.name,
+        }).catch(() => {});
+      }
+    })().catch(() => {});
+  }
 
   // fire cross-app webhook
   const [proj] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, existing.projectId)).limit(1);

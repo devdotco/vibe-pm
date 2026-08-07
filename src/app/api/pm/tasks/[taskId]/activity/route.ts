@@ -34,6 +34,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tas
       orgId: taskComments.orgId,
       userId: taskComments.userId,
       content: taskComments.content,
+      source: taskComments.source,
       isEdited: taskComments.isEdited,
       editedAt: taskComments.editedAt,
       deletedAt: taskComments.deletedAt,

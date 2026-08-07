@@ -15,7 +15,7 @@ interface Task {
 interface FeedItem {
   id: string; _type: "activity" | "comment"; content?: string; action?: string;
   oldValue?: string | null; newValue?: string | null; userId: string; createdAt: string;
-  userName?: string | null;
+  userName?: string | null; source?: string | null;
 }
 interface SubTask {
   id: string; title: string; status: string; assigneeId: string | null; dueDate: string | null;
@@ -518,7 +518,12 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                   </div>
                   <div style={{ flex: 1 }}>
                     {item._type === "comment" ? (
-                      <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)" }}>{item.content}</div>
+                      <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)" }}>
+                        {item.content}
+                        {item.source === "email" && (
+                          <span title="Via email reply" style={{ marginLeft: "6px", fontSize: "11px", color: "var(--text-muted)", verticalAlign: "middle" }}>&#128231;</span>
+                        )}
+                      </div>
                     ) : (
                       <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
                         <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{item.userName ?? item.userId.slice(0, 8)}</span>

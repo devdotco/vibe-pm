@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { taskComments, tasks } from '@/lib/db/schema';
+import { taskComments, tasks, taskAssignees, users, projects } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
-import { eq, and, isNull, asc } from 'drizzle-orm';
+import { eq, and, isNull, asc, inArray } from 'drizzle-orm';
+import { sendTaskCommentEmail, sendTaskMentionEmail } from '@/lib/email/notifications';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   const user = await requireUser();
@@ -21,9 +22,64 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const { content } = await req.json();
   const [comment] = await db.transaction(async (tx) => {
-    const [c] = await tx.insert(taskComments).values({ taskId, orgId: user.orgId, userId: user.id, content }).returning();
+    const [c] = await tx.insert(taskComments).values({ taskId, orgId: user.orgId, userId: user.id, content, source: 'app' }).returning();
     await logActivity({ taskId, projectId: task.projectId, orgId: user.orgId, userId: user.id, action: 'commented', newValue: c.id }, tx);
     return [c];
   });
+
+  // fire-and-forget email notifications
+  (async () => {
+    // gather recipient user IDs: task.assigneeId + all taskAssignees + task.createdBy
+    const recipientIds = new Set<string>();
+    if (task.assigneeId) recipientIds.add(task.assigneeId);
+    if (task.createdBy) recipientIds.add(task.createdBy);
+    const multiAssignees = await db.select({ userId: taskAssignees.userId })
+      .from(taskAssignees).where(eq(taskAssignees.taskId, taskId));
+    for (const a of multiAssignees) recipientIds.add(a.userId);
+    // exclude the commenter
+    recipientIds.delete(user.id);
+    if (recipientIds.size === 0) return;
+
+    const recipientUsers = await db.select({ id: users.id, email: users.email, name: users.name })
+      .from(users).where(inArray(users.id, [...recipientIds]));
+
+    const [proj] = await db.select({ name: projects.name }).from(projects)
+      .where(eq(projects.id, task.projectId)).limit(1);
+    if (!proj) return;
+
+    // detect @mentions: match @word patterns against recipient names
+    const mentionPattern = /@([\w.-]+)/g;
+    const mentionedNames = new Set<string>();
+    let m: RegExpExecArray | null;
+    while ((m = mentionPattern.exec(content)) !== null) {
+      mentionedNames.add(m[1]!.toLowerCase());
+    }
+
+    for (const recipient of recipientUsers) {
+      if (!recipient.email) continue;
+      const nameLower = recipient.name.toLowerCase().replace(/\s+/g, '');
+      const firstNameLower = recipient.name.split(' ')[0]!.toLowerCase();
+      const isMentioned = mentionedNames.size > 0 && (
+        mentionedNames.has(nameLower) ||
+        mentionedNames.has(firstNameLower) ||
+        [...mentionedNames].some(mn => nameLower.includes(mn))
+      );
+      const data = {
+        taskId,
+        taskTitle: task.title,
+        projectName: proj.name,
+        recipientEmail: recipient.email,
+        recipientName: recipient.name,
+        actorName: user.name,
+        commentText: content,
+      };
+      if (isMentioned) {
+        await sendTaskMentionEmail(data).catch(() => {});
+      } else {
+        await sendTaskCommentEmail(data).catch(() => {});
+      }
+    }
+  })().catch(() => {});
+
   return NextResponse.json({ comment }, { status: 201 });
 }

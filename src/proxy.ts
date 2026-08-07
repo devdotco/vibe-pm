@@ -8,6 +8,7 @@ const PUBLIC = [
   "/api/pm/cron",
   "/api/health",
   "/api/pusher",
+  "/api/webhooks/email/inbound",
 ];
 
 export function proxy(req: NextRequest) {

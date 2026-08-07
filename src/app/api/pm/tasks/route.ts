@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks, sections, projects } from '@/lib/db/schema';
+import { tasks, sections, projects, users } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { dispatchEvent } from '@/lib/webhooks/dispatcher';
@@ -8,6 +8,7 @@ import { fireProjectWebhooks } from '@/lib/webhooks';
 import { pusherServer, projectChannel } from '@/lib/pusher/server';
 import { positionBetween } from '@/lib/ordering';
 import { eq, and, isNull, asc, desc } from 'drizzle-orm';
+import { sendTaskAssignedEmail } from '@/lib/email/notifications';
 
 export async function GET(req: NextRequest) {
   const user = await requireUser();
@@ -56,6 +57,23 @@ export async function POST(req: NextRequest) {
       actorName: user.name,
       priority: task.priority,
     }).catch(() => {});
+  }
+
+  // email notification: task assigned on creation
+  if (assigneeId && proj) {
+    const [assignee] = await db.select({ email: users.email, name: users.name })
+      .from(users).where(eq(users.id, assigneeId)).limit(1);
+    if (assignee && assignee.email !== user.email) {
+      sendTaskAssignedEmail({
+        taskId: task.id,
+        taskTitle: task.title,
+        projectName: proj.name,
+        recipientEmail: assignee.email,
+        recipientName: assignee.name,
+        actorName: user.name,
+        commentText: undefined,
+      }).catch(() => {});
+    }
   }
 
   return NextResponse.json({ task }, { status: 201 });

@@ -1,0 +1,122 @@
+import { Resend } from 'resend';
+import crypto from 'crypto';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM = process.env.EMAIL_FROM ?? 'ViBe PM <notifications@mail.vb.co>';
+const REPLY_DOMAIN = process.env.EMAIL_REPLY_DOMAIN ?? 'reply.vb.co';
+const REPLY_SECRET = process.env.EMAIL_REPLY_SECRET ?? 'dev-secret';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://pm.vb.co';
+
+function replyToken(type: string, entityId: string, recipientEmail: string) {
+  return crypto.createHmac('sha256', REPLY_SECRET)
+    .update(`${type}:${entityId}:${recipientEmail}`)
+    .digest('hex').slice(0, 16);
+}
+
+function replyAddress(type: string, entityId: string, recipientEmail: string) {
+  return `reply+${type}-${entityId}-${replyToken(type, entityId, recipientEmail)}@${REPLY_DOMAIN}`;
+}
+
+export function verifyReplyAddress(toAddress: string, fromEmail: string): { type: string; entityId: string } | null {
+  const match = toAddress.match(/reply\+(\w+)-([0-9a-f-]+)-([0-9a-f]+)@/);
+  if (!match) return null;
+  const [, type, entityId, token] = match;
+  const expected = replyToken(type!, entityId!, fromEmail);
+  if (expected !== token) return null;
+  return { type: type!, entityId: entityId! };
+}
+
+export function stripQuotedReply(text: string): string {
+  // Remove everything after common email reply markers
+  const patterns = [
+    /\r?\nOn .{5,100} wrote:\r?\n/,
+    /\r?\n[-_]{3,} *Original Message *[-_]{3,}/i,
+    /\r?\nFrom: .+/,
+    /\r?\n>[ \t]/,
+  ];
+  let cutAt = text.length;
+  for (const p of patterns) {
+    const m = text.search(p);
+    if (m > 0 && m < cutAt) cutAt = m;
+  }
+  return text.slice(0, cutAt).trim();
+}
+
+export interface TaskNotificationData {
+  taskId: string;
+  taskTitle: string;
+  projectName: string;
+  taskUrl?: string;
+  recipientEmail: string;
+  recipientName: string;
+  actorName: string;
+  commentText?: string;
+}
+
+async function sendNotification(to: string, subject: string, html: string, replyTo: string) {
+  if (!process.env.RESEND_API_KEY) return; // skip in dev if not configured
+  await resend.emails.send({ from: FROM, to, subject, html, replyTo }).catch(console.error);
+}
+
+function taskUrl(taskId: string) {
+  return `${APP_URL}/tasks/${taskId}`;
+}
+
+export async function sendTaskAssignedEmail(data: TaskNotificationData) {
+  const url = data.taskUrl ?? taskUrl(data.taskId);
+  const replyTo = replyAddress('task', data.taskId, data.recipientEmail);
+  await sendNotification(
+    data.recipientEmail,
+    `You've been assigned: ${data.taskTitle}`,
+    `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+      <h2 style="font-size:18px;margin-bottom:8px">New task assigned</h2>
+      <p style="color:#666;margin-bottom:16px">${data.actorName} assigned you a task in <strong>${data.projectName}</strong>:</p>
+      <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px">
+        <strong style="font-size:16px">${data.taskTitle}</strong>
+      </div>
+      <a href="${url}" style="display:inline-block;background:#4f46e5;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
+      <p style="color:#9ca3af;font-size:12px;margin-top:24px">Reply to this email to leave a comment on the task without logging in.</p>
+    </div>`,
+    replyTo
+  );
+}
+
+export async function sendTaskMentionEmail(data: TaskNotificationData) {
+  const url = data.taskUrl ?? taskUrl(data.taskId);
+  const replyTo = replyAddress('task', data.taskId, data.recipientEmail);
+  await sendNotification(
+    data.recipientEmail,
+    `${data.actorName} mentioned you in: ${data.taskTitle}`,
+    `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+      <h2 style="font-size:18px;margin-bottom:8px">You were mentioned</h2>
+      <p style="color:#666;margin-bottom:16px">${data.actorName} mentioned you in <strong>${data.projectName}</strong>:</p>
+      <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px">
+        <strong style="font-size:16px;display:block;margin-bottom:8px">${data.taskTitle}</strong>
+        ${data.commentText ? `<p style="color:#374151;margin:0">${data.commentText}</p>` : ''}
+      </div>
+      <a href="${url}" style="display:inline-block;background:#4f46e5;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
+      <p style="color:#9ca3af;font-size:12px;margin-top:24px">Reply to this email to respond without logging in.</p>
+    </div>`,
+    replyTo
+  );
+}
+
+export async function sendTaskCommentEmail(data: TaskNotificationData) {
+  const url = data.taskUrl ?? taskUrl(data.taskId);
+  const replyTo = replyAddress('task', data.taskId, data.recipientEmail);
+  await sendNotification(
+    data.recipientEmail,
+    `New comment on: ${data.taskTitle}`,
+    `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+      <h2 style="font-size:18px;margin-bottom:8px">New comment</h2>
+      <p style="color:#666;margin-bottom:16px">${data.actorName} commented on a task in <strong>${data.projectName}</strong>:</p>
+      <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px">
+        <strong style="font-size:16px;display:block;margin-bottom:8px">${data.taskTitle}</strong>
+        ${data.commentText ? `<blockquote style="border-left:3px solid #4f46e5;padding-left:12px;color:#374151;margin:0">${data.commentText}</blockquote>` : ''}
+      </div>
+      <a href="${url}" style="display:inline-block;background:#4f46e5;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
+      <p style="color:#9ca3af;font-size:12px;margin-top:24px">Reply to this email to respond without logging in.</p>
+    </div>`,
+    replyTo
+  );
+}

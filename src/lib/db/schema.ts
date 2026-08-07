@@ -202,6 +202,7 @@ export const taskComments = pgTable("task_comments", {
   orgId: text("org_id").notNull(),
   userId: uuid("user_id").notNull(),
   content: text("content").notNull(),
+  source: text("source").default("app").notNull(), // 'app' | 'email'
   isEdited: boolean("is_edited").default(false).notNull(),
   editedAt: timestamp("edited_at", { withTimezone: true }),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
