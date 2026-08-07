@@ -9,7 +9,7 @@ const PUBLIC = [
   "/api/pusher",
 ];
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const isPublic = PUBLIC.some((p) => req.nextUrl.pathname.startsWith(p));
   if (isPublic) return NextResponse.next();
   const token = req.cookies.get("__vibe_session")?.value;
