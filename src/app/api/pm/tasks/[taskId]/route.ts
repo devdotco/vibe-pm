@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks, projects } from '@/lib/db/schema';
+import { tasks, projects, automations, taskAssignees } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { fireProjectWebhooks } from '@/lib/webhooks';
@@ -60,6 +60,53 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
       actorName: user.name,
       status: task.status,
     }).catch(() => {});
+  }
+
+  // ── Automation engine ──────────────────────────────────────────────────────
+  try {
+    const activeAutomations = await db.select().from(automations)
+      .where(and(eq(automations.projectId, existing.projectId), eq(automations.isEnabled, true)));
+
+    for (const auto of activeAutomations) {
+      let triggered = false;
+
+      if (auto.triggerType === 'task.completed' && task.status === 'completed' && existing.status !== 'completed') {
+        triggered = true;
+      } else if (auto.triggerType === 'status.changed') {
+        const cond = auto.triggerConditions as { value?: string } | null;
+        if (body.status !== undefined && body.status !== existing.status) {
+          triggered = cond?.value === undefined || cond.value === task.status;
+        }
+      } else if (auto.triggerType === 'task.assigned' && body.assigneeId !== undefined && body.assigneeId !== existing.assigneeId) {
+        triggered = true;
+      }
+
+      if (!triggered) continue;
+
+      const params = auto.actionParams as Record<string, string> | null ?? {};
+
+      if (auto.actionType === 'change_status' && params.status) {
+        await db.update(tasks).set({ status: params.status, updatedAt: new Date() }).where(eq(tasks.id, taskId));
+      } else if (auto.actionType === 'assign_user' && params.userId) {
+        await db.insert(taskAssignees)
+          .values({ taskId, userId: params.userId, orgId: user.orgId })
+          .onConflictDoNothing();
+      } else if (auto.actionType === 'add_label' && params.label) {
+        const current = (task.labels ?? []) as string[];
+        if (!current.includes(params.label)) {
+          await db.update(tasks).set({ labels: [...current, params.label], updatedAt: new Date() }).where(eq(tasks.id, taskId));
+        }
+      } else if (auto.actionType === 'move_section' && params.sectionId) {
+        await db.update(tasks).set({ sectionId: params.sectionId, updatedAt: new Date() }).where(eq(tasks.id, taskId));
+      }
+
+      // bump run count
+      await db.update(automations)
+        .set({ runCount: (auto.runCount ?? 0) + 1, lastRunAt: new Date() })
+        .where(eq(automations.id, auto.id));
+    }
+  } catch {
+    // automation errors must never fail the response
   }
 
   return NextResponse.json({ task });

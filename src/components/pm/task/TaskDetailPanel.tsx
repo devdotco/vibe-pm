@@ -71,11 +71,20 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const [showDepInput, setShowDepInput] = useState(false);
   const [depTaskId, setDepTaskId] = useState("");
   const [depType, setDepType] = useState("finish_to_start");
+  const [customFields, setCustomFields] = useState<Record<string, string>>({});
+  const [customFieldsExpanded, setCustomFieldsExpanded] = useState(false);
+  const [addingField, setAddingField] = useState(false);
+  const [newFieldKey, setNewFieldKey] = useState("");
+  const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
+  const [editingFieldValue, setEditingFieldValue] = useState("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadAll = useCallback(() => {
-    fetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => setTask(d.task));
+    fetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => {
+      setTask(d.task);
+      setCustomFields((d.task?.customFields as Record<string, string>) ?? {});
+    });
     fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
     fetch(`/api/pm/tasks/${taskId}/subtasks`).then(r => r.json()).then(d => setSubtasks(d.subtasks ?? []));
     fetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json()).then(d => setAssignees(d.assignees ?? []));
@@ -144,6 +153,39 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     const res = await fetch(`/api/pm/tasks/${taskId}/dependencies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dependsOnTaskId: depTaskId.trim(), type: depType }) });
     const d = await res.json();
     if (d.dependency) { setDependencies(prev => [...prev, d.dependency]); setDepTaskId(""); setShowDepInput(false); }
+  };
+
+  const saveCustomField = async (key: string, value: string) => {
+    const updated = { ...customFields, [key]: value };
+    setCustomFields(updated);
+    setEditingFieldKey(null);
+    await fetch(`/api/pm/tasks/${taskId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customFields: updated }),
+    });
+  };
+
+  const addCustomField = async () => {
+    const key = newFieldKey.trim();
+    if (!key || key in customFields) return;
+    const updated = { ...customFields, [key]: "" };
+    setCustomFields(updated);
+    setNewFieldKey(""); setAddingField(false);
+    setEditingFieldKey(key); setEditingFieldValue("");
+    await fetch(`/api/pm/tasks/${taskId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customFields: updated }),
+    });
+  };
+
+  const removeCustomField = async (key: string) => {
+    const updated = { ...customFields };
+    delete updated[key];
+    setCustomFields(updated);
+    await fetch(`/api/pm/tasks/${taskId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customFields: updated }),
+    });
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -381,6 +423,76 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Custom Fields */}
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
+            <button
+              onClick={() => setCustomFieldsExpanded(v => !v)}
+              style={{ display: "flex", alignItems: "center", gap: "6px", background: "none", border: "none", cursor: "pointer", padding: 0, width: "100%" }}
+            >
+              <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>
+                {customFieldsExpanded ? "▾" : "▶"} Custom Fields
+              </span>
+              {Object.keys(customFields).length > 0 && (
+                <span style={{ fontSize: "10px", color: "var(--text-muted)", padding: "1px 5px", background: "var(--panel-hover)", borderRadius: "8px" }}>
+                  {Object.keys(customFields).length}
+                </span>
+              )}
+            </button>
+            {customFieldsExpanded && (
+              <div style={{ marginTop: "10px" }}>
+                {Object.keys(customFields).length === 0 && !addingField && (
+                  <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>No custom fields.</div>
+                )}
+                {Object.entries(customFields).map(([key, value]) => (
+                  <div key={key} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", width: "100px", flexShrink: 0, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{key}</span>
+                    {editingFieldKey === key ? (
+                      <>
+                        <input
+                          autoFocus value={editingFieldValue}
+                          onChange={e => setEditingFieldValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") saveCustomField(key, editingFieldValue);
+                            if (e.key === "Escape") setEditingFieldKey(null);
+                          }}
+                          onBlur={() => saveCustomField(key, editingFieldValue)}
+                          style={{ flex: 1, padding: "3px 8px", border: "1px solid var(--accent)", borderRadius: "4px", fontSize: "12px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          onClick={() => { setEditingFieldKey(key); setEditingFieldValue(value); }}
+                          style={{ flex: 1, fontSize: "13px", color: value ? "var(--text-primary)" : "var(--text-muted)", cursor: "text", minHeight: "20px" }}
+                        >
+                          {value || "—"}
+                        </span>
+                        <button onClick={() => removeCustomField(key)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "13px", padding: "0 2px", flexShrink: 0 }}>×</button>
+                      </>
+                    )}
+                  </div>
+                ))}
+                {addingField ? (
+                  <div style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "4px" }}>
+                    <input
+                      autoFocus value={newFieldKey}
+                      onChange={e => setNewFieldKey(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") addCustomField(); if (e.key === "Escape") { setAddingField(false); setNewFieldKey(""); } }}
+                      placeholder="Field name"
+                      style={{ flex: 1, padding: "4px 8px", border: "1px solid var(--accent)", borderRadius: "4px", fontSize: "12px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }}
+                    />
+                    <button onClick={addCustomField} style={{ padding: "4px 10px", background: "var(--accent)", color: "white", border: "none", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}>Add</button>
+                    <button onClick={() => { setAddingField(false); setNewFieldKey(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "14px" }}>×</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setAddingField(true)} style={{ fontSize: "11px", color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: "4px" }}>
+                    + Add field
+                  </button>
+                )}
               </div>
             )}
           </div>

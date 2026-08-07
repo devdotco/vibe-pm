@@ -5,8 +5,12 @@ import { format, parseISO } from "date-fns";
 interface Goal {
   id: string; title: string; description: string | null; status: string;
   progressValue: string; targetValue: string; progressType: string;
-  dueDate: string | null; ownerId: string;
+  dueDate: string | null; ownerId: string; teamId: string | null;
 }
+
+interface Team { id: string; name: string; icon: string | null; }
+interface Project { id: string; name: string; color: string; }
+interface GoalProjectLink { id: string; goalId: string; projectId: string; orgId: string; }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   on_track: { label: "On Track", color: "var(--positive)" },
@@ -33,13 +37,23 @@ function formatProgress(value: string, target: string, type: string) {
 
 export default function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedLinks, setExpandedLinks] = useState<Set<string>>(new Set());
+  const [goalLinks, setGoalLinks] = useState<Record<string, GoalProjectLink[]>>({});
 
   useEffect(() => {
-    fetch("/api/pm/goals").then(r => r.json()).then(d => {
-      setGoals(d.goals ?? []);
+    Promise.all([
+      fetch("/api/pm/goals").then(r => r.json()),
+      fetch("/api/pm/teams").then(r => r.json()),
+      fetch("/api/pm/projects").then(r => r.json()),
+    ]).then(([gd, td, pd]) => {
+      setGoals(gd.goals ?? []);
+      setTeams(td.teams ?? []);
+      setAllProjects(pd.projects ?? []);
       setLoading(false);
     });
   }, []);
@@ -55,6 +69,37 @@ export default function GoalsPage() {
       setGoals(prev => prev.map(g => g.id === goalId ? d.goal : g));
       setEditingId(null);
     }
+  };
+
+  const toggleLinks = async (goalId: string) => {
+    const next = new Set(expandedLinks);
+    if (next.has(goalId)) {
+      next.delete(goalId);
+    } else {
+      next.add(goalId);
+      if (!goalLinks[goalId]) {
+        const res = await fetch(`/api/pm/goals/${goalId}/project-links`);
+        const d = await res.json();
+        setGoalLinks(prev => ({ ...prev, [goalId]: d.links ?? [] }));
+      }
+    }
+    setExpandedLinks(next);
+  };
+
+  const linkProject = async (goalId: string, projectId: string) => {
+    const res = await fetch(`/api/pm/goals/${goalId}/project-links`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId }),
+    });
+    const d = await res.json();
+    if (d.link) {
+      setGoalLinks(prev => ({ ...prev, [goalId]: [...(prev[goalId] ?? []), d.link] }));
+    }
+  };
+
+  const unlinkProject = async (goalId: string, linkId: string) => {
+    await fetch(`/api/pm/goals/${goalId}/project-links/${linkId}`, { method: "DELETE" });
+    setGoalLinks(prev => ({ ...prev, [goalId]: (prev[goalId] ?? []).filter(l => l.id !== linkId) }));
   };
 
   if (loading) return <div style={{ padding: "32px", color: "var(--text-muted)" }}>Loading...</div>;
@@ -82,8 +127,11 @@ export default function GoalsPage() {
           const pct = Number(goal.targetValue) > 0
             ? Math.min(100, Math.round((Number(goal.progressValue) / Number(goal.targetValue)) * 100))
             : 0;
-          const statusCfg = STATUS_CONFIG[goal.status] ?? STATUS_CONFIG.on_track;
+          const statusCfg = STATUS_CONFIG[goal.status] ?? STATUS_CONFIG.on_track!;
           const isEditing = editingId === goal.id;
+          const linksExpanded = expandedLinks.has(goal.id);
+          const links = goalLinks[goal.id] ?? [];
+          const team = teams.find(t => t.id === goal.teamId);
 
           return (
             <div key={goal.id} style={{
@@ -94,6 +142,11 @@ export default function GoalsPage() {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)" }}>{goal.title}</div>
                   {goal.description && <div style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "2px" }}>{goal.description}</div>}
+                  {team && (
+                    <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+                      {team.icon ?? "🏢"} {team.name}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0, marginLeft: "12px" }}>
                   <span style={{
@@ -131,16 +184,97 @@ export default function GoalsPage() {
               {isEditing && (
                 <ProgressEditForm goal={goal} onSave={(patch) => updateGoal(goal.id, patch)} onCancel={() => setEditingId(null)} />
               )}
+
+              {/* Linked Projects */}
+              <div style={{ marginTop: "12px", borderTop: "1px solid var(--border)", paddingTop: "10px" }}>
+                <button
+                  onClick={() => toggleLinks(goal.id)}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "12px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px", padding: 0 }}
+                >
+                  {linksExpanded ? "▾" : "▶"} Linked Projects {links.length > 0 ? `(${links.length})` : ""}
+                </button>
+                {linksExpanded && (
+                  <LinkedProjectsPanel
+                    goalId={goal.id}
+                    links={links}
+                    allProjects={allProjects}
+                    onLink={linkProject}
+                    onUnlink={unlinkProject}
+                  />
+                )}
+              </div>
             </div>
           );
         })}
       </div>
       {showNew && (
         <NewGoalModal
+          teams={teams}
           onClose={() => setShowNew(false)}
           onCreated={(g) => { setGoals(prev => [...prev, g]); setShowNew(false); }}
         />
       )}
+    </div>
+  );
+}
+
+// ── Linked Projects Panel ─────────────────────────────────────────────────────
+
+function LinkedProjectsPanel({
+  goalId, links, allProjects, onLink, onUnlink,
+}: {
+  goalId: string;
+  links: { id: string; goalId: string; projectId: string; orgId: string }[];
+  allProjects: Project[];
+  onLink: (goalId: string, projectId: string) => void;
+  onUnlink: (goalId: string, linkId: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+
+  const linkedProjectIds = new Set(links.map(l => l.projectId));
+  const available = allProjects.filter(p => !linkedProjectIds.has(p.id));
+
+  return (
+    <div style={{ marginTop: "8px" }}>
+      {links.length === 0 && !adding && (
+        <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "6px" }}>No projects linked yet.</div>
+      )}
+      {links.map(link => {
+        const project = allProjects.find(p => p.id === link.projectId);
+        if (!project) return null;
+        return (
+          <div key={link.id} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: project.color, flexShrink: 0 }} />
+            <a href={`/projects/${project.id}`} style={{ fontSize: "13px", color: "var(--text-primary)", textDecoration: "none", flex: 1 }}>{project.name}</a>
+            <button onClick={() => onUnlink(goalId, link.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "14px", padding: "0 2px" }}>×</button>
+          </div>
+        );
+      })}
+      {adding ? (
+        <div style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "6px" }}>
+          <select
+            value={selectedProjectId}
+            onChange={e => setSelectedProjectId(e.target.value)}
+            style={{ flex: 1, padding: "6px 8px", border: "1px solid var(--border)", borderRadius: "5px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", cursor: "pointer" }}
+          >
+            <option value="">Select a project…</option>
+            {available.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button
+            onClick={() => { if (selectedProjectId) { onLink(goalId, selectedProjectId); setSelectedProjectId(""); setAdding(false); } }}
+            disabled={!selectedProjectId}
+            style={{ padding: "6px 12px", background: "var(--accent)", color: "white", border: "none", borderRadius: "5px", fontSize: "12px", cursor: "pointer", opacity: !selectedProjectId ? 0.6 : 1 }}
+          >
+            Link
+          </button>
+          <button onClick={() => { setAdding(false); setSelectedProjectId(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "16px" }}>×</button>
+        </div>
+      ) : available.length > 0 ? (
+        <button onClick={() => setAdding(true)} style={{ fontSize: "12px", color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: "4px" }}>
+          + Link project
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -204,12 +338,21 @@ function ProgressEditForm({ goal, onSave, onCancel }: { goal: Goal; onSave: (pat
 
 // ── New Goal Modal ─────────────────────────────────────────────────────────────
 
-function NewGoalModal({ onClose, onCreated }: { onClose: () => void; onCreated: (g: Goal) => void }) {
+function NewGoalModal({
+  teams,
+  onClose,
+  onCreated,
+}: {
+  teams: Team[];
+  onClose: () => void;
+  onCreated: (g: Goal) => void;
+}) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [targetValue, setTargetValue] = useState("100");
   const [progressType, setProgressType] = useState("percent");
   const [dueDate, setDueDate] = useState("");
+  const [teamId, setTeamId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -226,6 +369,7 @@ function NewGoalModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
         targetValue,
         progressType,
         dueDate: dueDate || undefined,
+        teamId: teamId || undefined,
       }),
     });
     const d = await res.json();
@@ -237,11 +381,11 @@ function NewGoalModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
     }
   };
 
-  const inputStyle = { width: "100%", padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" };
+  const inputStyle: React.CSSProperties = { width: "100%", padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" };
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onClose}>
-      <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "12px", padding: "24px", width: "420px", boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "12px", padding: "24px", width: "440px", boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }} onClick={e => e.stopPropagation()}>
         <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "20px", color: "var(--text-primary)" }}>New Goal</h3>
         <form onSubmit={submit}>
           <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -254,6 +398,15 @@ function NewGoalModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
               <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional description" rows={2}
                 style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
             </div>
+            {teams.length > 0 && (
+              <div>
+                <label style={{ fontSize: "12px", color: "var(--text-muted)", display: "block", marginBottom: "5px" }}>Workspace (optional)</label>
+                <select value={teamId} onChange={e => setTeamId(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
+                  <option value="">No workspace</option>
+                  {teams.map(t => <option key={t.id} value={t.id}>{t.icon ?? "🏢"} {t.name}</option>)}
+                </select>
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               <div>
                 <label style={{ fontSize: "12px", color: "var(--text-muted)", display: "block", marginBottom: "5px" }}>Target value</label>
