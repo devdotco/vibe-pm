@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const PUBLIC = [
+  "/api/auth/magic",
   "/sign-in",
   "/api/pm/public",
   "/api/pm/webhook",
