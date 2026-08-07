@@ -15,6 +15,7 @@ interface Task {
 interface FeedItem {
   id: string; _type: "activity" | "comment"; content?: string; action?: string;
   oldValue?: string | null; newValue?: string | null; userId: string; createdAt: string;
+  userName?: string | null;
 }
 interface SubTask {
   id: string; title: string; status: string; assigneeId: string | null; dueDate: string | null;
@@ -225,7 +226,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
               {feed.map(item => (
                 <div key={item.id} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
                   <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "var(--accent-subtle)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 600, flexShrink: 0 }}>
-                    {item.userId.slice(0, 2).toUpperCase()}
+                    {(item.userName ?? item.userId).slice(0, 2).toUpperCase()}
                   </div>
                   <div style={{ flex: 1 }}>
                     {item._type === "comment" ? (
@@ -234,7 +235,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                       </div>
                     ) : (
                       <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
-                        <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{item.userId.slice(0, 8)}</span>
+                        <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{item.userName ?? item.userId.slice(0, 8)}</span>
                         {" "}{(ACTION_LABELS[item.action ?? ""] ?? (() => item.action ?? ""))({ oldValue: item.oldValue, newValue: item.newValue })}
                       </div>
                     )}

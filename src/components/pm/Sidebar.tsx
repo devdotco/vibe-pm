@@ -108,6 +108,7 @@ export function Sidebar({ user }: SidebarProps) {
         {navItem("/inbox", "🔔", "Inbox")}
         {navItem("/search", "🔍", "Search")}
         {navItem("/goals", "🎯", "Goals")}
+        {navItem("/admin/users", "⚙️", "Admin")}
 
         {/* Projects */}
         <div
