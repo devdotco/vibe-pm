@@ -5,6 +5,19 @@ import { PrioritySelect } from "@/components/pm/PriorityBadge";
 import ReactMarkdown from "react-markdown";
 import { formatDistanceToNow, parseISO } from "date-fns";
 
+function renderWithMentions(text: string) {
+  const parts = text.split(/(@\w+)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        /^@\w+$/.test(part)
+          ? <strong key={i} style={{ color: "var(--accent)" }}>{part}</strong>
+          : part
+      )}
+    </>
+  );
+}
+
 interface Task {
   id: string; title: string; description: string | null; status: string; priority: string;
   dueDate: string | null; startDate: string | null; assigneeId: string | null; sectionId: string | null;
@@ -83,6 +96,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [assigneeSearch, setAssigneeSearch] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStart, setMentionStart] = useState(-1);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const assigneePickerRef = useRef<HTMLDivElement>(null);
@@ -591,7 +605,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                   <div style={{ flex: 1 }}>
                     {item._type === "comment" ? (
                       <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)" }}>
-                        {item.content}
+                        {renderWithMentions(item.content ?? "")}
                         {item.source === "email" && (
                           <span title="Via email reply" style={{ marginLeft: "6px", fontSize: "11px", color: "var(--text-muted)", verticalAlign: "middle" }}>&#128231;</span>
                         )}
@@ -627,7 +641,13 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                     const cursor = e.target.selectionStart ?? val.length;
                     const before = val.slice(0, cursor);
                     const match = before.match(/@([\w.]*)$/);
-                    setMentionQuery(match ? match[1]! : null);
+                    if (match) {
+                      setMentionQuery(match[1]!);
+                      setMentionStart(cursor - match[0].length);
+                    } else {
+                      setMentionQuery(null);
+                      setMentionStart(-1);
+                    }
                   }}
                   onKeyDown={e => {
                     if (e.key === "Escape") { setMentionQuery(null); return; }
@@ -648,14 +668,14 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                           type="button"
                           onMouseDown={e => {
                             e.preventDefault();
-                            // replace @query with @firstname
                             const firstName = u.name.split(" ")[0]!;
+                            // Replace from mentionStart (the @) to cursor with @FirstName
                             const cursor = textareaRef.current?.selectionStart ?? comment.length;
-                            const before = comment.slice(0, cursor);
+                            const before = comment.slice(0, mentionStart);
                             const after = comment.slice(cursor);
-                            const replaced = before.replace(/@([\w.]*)$/, `@${firstName} `);
-                            setComment(replaced + after);
+                            setComment(`${before}@${firstName} ${after}`);
                             setMentionQuery(null);
+                            setMentionStart(-1);
                             setTimeout(() => textareaRef.current?.focus(), 0);
                           }}
                           style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "7px 12px", background: "none", border: "none", cursor: "pointer", fontSize: "13px", color: "var(--text-primary)", textAlign: "left" }}
