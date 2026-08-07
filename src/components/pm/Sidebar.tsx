@@ -772,15 +772,6 @@ export function Sidebar({ user }: SidebarProps) {
           </div>
         )}
 
-        {/* No teams empty state — show all projects ungrouped */}
-        {teams.length === 0 && projects.length > 0 && (
-          <div style={{ marginTop: "4px" }}>
-            {projects.map((p) => (
-              <ProjectLink key={p.id} project={p} />
-            ))}
-          </div>
-        )}
-
         {/* Add project (no team context) */}
         <button
           onClick={() => {
