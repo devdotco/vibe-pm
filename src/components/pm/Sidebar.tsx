@@ -683,6 +683,7 @@ export function Sidebar({ user }: SidebarProps) {
         <NavItem href="/my-tasks" icon="✓" label="My Tasks" />
         <NavItem href="/projects" icon="◈" label="Projects" exact />
         <NavItem href="/portfolios" icon="▦" label="Portfolios" />
+        <NavItem href="/admin/users" icon="👥" label="Members" />
       </nav>
 
       {/* Divider */}
