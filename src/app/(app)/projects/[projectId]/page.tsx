@@ -11,8 +11,9 @@ interface Section { id: string; name: string; position: number; color?: string |
 interface Task {
   id: string; title: string; status: string; priority: string; dueDate: string | null;
   assigneeId: string | null; sectionId: string | null; position: number; labels: string[];
-  completedAt: string | null; createdAt?: string;
+  completedAt: string | null; createdAt?: string; parentTaskId?: string | null;
   assignees?: Array<{ id: string; name: string; email: string }>;
+  subtaskCount?: number; commentCount?: number; attachmentCount?: number;
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -108,7 +109,7 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
         {view === "list" && (
           <ProjectListView
-            projectId={projectId} sections={sections} tasks={tasks}
+            projectId={projectId} project={project} sections={sections} tasks={tasks}
             setSections={setSections} setTasks={setTasks}
             onTaskClick={setSelectedTaskId}
           />

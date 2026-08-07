@@ -1,24 +1,39 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
-import { PriorityDot } from "@/components/pm/PriorityBadge";
+import { useState, useRef, useEffect, useCallback } from "react";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Section { id: string; name: string; position: number; color?: string | null; }
 interface Assignee { id: string; name: string; email: string; }
 interface Task {
-  id: string; title: string; status: string; priority: string; dueDate: string | null;
-  assigneeId: string | null; sectionId: string | null; position: number; labels: string[];
-  completedAt: string | null; assignees?: Assignee[];
+  id: string; title: string; status: string; priority: string;
+  dueDate: string | null; assigneeId: string | null; sectionId: string | null;
+  position: number; labels: string[]; completedAt: string | null;
+  assignees?: Assignee[]; subtaskCount?: number; parentTaskId?: string | null;
+  commentCount?: number; attachmentCount?: number; createdAt?: string;
 }
-
+interface ProjectInfo { name: string; color: string; }
 interface ProjectListViewProps {
   projectId: string;
+  project?: ProjectInfo | null;
   sections: Section[];
   tasks: Task[];
   setSections: (s: Section[]) => void;
   setTasks: (t: Task[]) => void;
   onTaskClick: (id: string) => void;
 }
+type SortField = "position" | "dueDate" | "priority" | "title" | "createdAt";
+type GroupBy = "section" | "assignee" | "priority" | "status";
+interface ColVis { dueDate: boolean; collaborators: boolean; projects: boolean; visibility: boolean; }
+interface Filters { priorities: string[]; dueDates: string[]; }
+interface TaskGroup { key: string; label: string; tasks: Task[]; sectionId?: string; }
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
+const PRIORITY_COLORS: Record<string, string> = {
+  urgent: "#ef4444", high: "#f97316", medium: "#eab308", low: "#22c55e", none: "#9ca3af",
+};
 const SECTION_COLORS = [
   { label: "Default", value: null },
   { label: "Red", value: "#ef4444" },
@@ -29,6 +44,8 @@ const SECTION_COLORS = [
   { label: "Purple", value: "#a855f7" },
   { label: "Pink", value: "#ec4899" },
 ];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function avatarInitials(a: Assignee): string {
   const parts = (a.name || a.email).trim().split(/\s+/);
@@ -43,20 +60,79 @@ function hashColor(str: string): string {
   return colors[Math.abs(h) % colors.length]!;
 }
 
-function AssigneeStack({ assignees }: { assignees: Assignee[] }) {
-  if (!assignees || assignees.length === 0) return <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>—</span>;
+function fmtDate(d: string): string {
+  return new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function isOverdue(d: string | null, done: boolean): boolean {
+  if (!d || done) return false;
+  return new Date(d + "T23:59:59") < new Date();
+}
+
+function isNew(createdAt?: string): boolean {
+  if (!createdAt) return false;
+  return Date.now() - new Date(createdAt).getTime() < 24 * 60 * 60 * 1000;
+}
+
+function buildGridCols(cols: ColVis): string {
+  return [
+    "8px",
+    "22px",
+    "16px",
+    "1fr",
+    cols.dueDate ? "90px" : null,
+    cols.collaborators ? "100px" : null,
+    cols.projects ? "140px" : null,
+    cols.visibility ? "130px" : null,
+    "28px",
+  ].filter(Boolean).join(" ");
+}
+
+// ── Checkbox ──────────────────────────────────────────────────────────────────
+
+function Checkbox({ done, onToggle }: { done: boolean; onToggle: (e: React.MouseEvent) => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onToggle}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      title={done ? "Mark incomplete" : "Mark complete"}
+      style={{
+        width: "16px", height: "16px", borderRadius: "50%",
+        border: done ? "none" : `2px solid ${hovered ? "#22c55e" : "var(--border-strong, #cbd5e1)"}`,
+        background: done ? "#22c55e" : hovered ? "#22c55e18" : "transparent",
+        cursor: "pointer", padding: 0, flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        transition: "background 0.12s, border-color 0.12s",
+      }}
+    >
+      {(done || hovered) && (
+        <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+          <path d="M1 3.5L3.5 6L8 1" stroke={done ? "white" : "#22c55e"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+// ── AvatarStack ───────────────────────────────────────────────────────────────
+
+function AvatarStack({ assignees }: { assignees: Assignee[] }) {
+  if (!assignees || assignees.length === 0)
+    return <span style={{ color: "var(--text-muted)", fontSize: "12px" }}>—</span>;
   const shown = assignees.slice(0, 3);
   const extra = assignees.length - shown.length;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "-4px" }}>
+    <div style={{ display: "flex", alignItems: "center" }}>
       {shown.map((a, i) => (
         <div key={a.id} title={a.name || a.email} style={{
-          width: "22px", height: "22px", borderRadius: "50%",
+          width: "20px", height: "20px", borderRadius: "50%",
           background: hashColor(a.id),
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "9px", fontWeight: 700, color: "#fff",
-          border: "2px solid var(--bg-elevated)",
-          marginLeft: i > 0 ? "-6px" : "0",
+          fontSize: "8px", fontWeight: 700, color: "#fff",
+          border: "2px solid var(--bg, #fff)",
+          marginLeft: i > 0 ? "-5px" : "0",
           position: "relative", zIndex: shown.length - i,
           flexShrink: 0,
         }}>
@@ -65,76 +141,676 @@ function AssigneeStack({ assignees }: { assignees: Assignee[] }) {
       ))}
       {extra > 0 && (
         <div style={{
-          width: "22px", height: "22px", borderRadius: "50%",
-          background: "var(--panel-hover)", border: "2px solid var(--bg-elevated)",
+          width: "20px", height: "20px", borderRadius: "50%",
+          background: "var(--panel-hover)", border: "2px solid var(--bg, #fff)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "9px", fontWeight: 600, color: "var(--text-muted)",
-          marginLeft: "-6px", flexShrink: 0,
-        }}>
-          +{extra}
-        </div>
+          fontSize: "8px", fontWeight: 600, color: "var(--text-muted)",
+          marginLeft: "-5px", flexShrink: 0,
+        }}>+{extra}</div>
       )}
     </div>
   );
 }
 
-export function ProjectListView({ projectId, sections, tasks, setSections, setTasks, onTaskClick }: ProjectListViewProps) {
+// ── ProjectBadge ──────────────────────────────────────────────────────────────
+
+function ProjectBadge({ name, color }: { name: string; color: string }) {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: "4px",
+      padding: "2px 7px", borderRadius: "10px", fontSize: "11px",
+      background: color + "22", color, border: `1px solid ${color}44`,
+      maxWidth: "128px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      flexShrink: 0,
+    }}>
+      <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: color, flexShrink: 0 }} />
+      {name}
+    </span>
+  );
+}
+
+// ── Column header ─────────────────────────────────────────────────────────────
+
+function ColumnHeader({
+  gridCols, cols, sortField, sortDir, onSort,
+}: {
+  gridCols: string; cols: ColVis; sortField: SortField;
+  sortDir: "asc" | "desc"; onSort: (f: SortField) => void;
+}) {
+  const hdr = (label: string, field?: SortField): React.ReactNode => (
+    <div
+      onClick={field ? () => onSort(field) : undefined}
+      style={{
+        fontSize: "11px", fontWeight: 600, color: "var(--text-muted)",
+        textTransform: "uppercase", letterSpacing: "0.04em",
+        padding: "0 8px", cursor: field ? "pointer" : "default",
+        userSelect: "none", display: "flex", alignItems: "center", gap: "3px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+      {field && sortField === field && (
+        <span style={{ fontSize: "9px" }}>{sortDir === "asc" ? "▲" : "▼"}</span>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{
+      display: "grid", gridTemplateColumns: gridCols,
+      alignItems: "center", minHeight: "30px",
+      borderBottom: "1px solid var(--border)",
+      background: "var(--bg-elevated)",
+      position: "sticky", top: 0, zIndex: 10,
+      flexShrink: 0,
+    }}>
+      <div />
+      <div />
+      <div />
+      {hdr("Name", "title")}
+      {cols.dueDate && hdr("Due date", "dueDate")}
+      {cols.collaborators && hdr("Collaborators")}
+      {cols.projects && hdr("Projects")}
+      {cols.visibility && hdr("Task visibility")}
+      <button
+        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "14px", padding: "0", display: "flex", alignItems: "center", justifyContent: "center" }}
+        title="Add column"
+      >+</button>
+    </div>
+  );
+}
+
+// ── Filter panel ──────────────────────────────────────────────────────────────
+
+const DUEDATE_OPTIONS = [
+  { value: "overdue", label: "Overdue" },
+  { value: "today", label: "Today" },
+  { value: "this_week", label: "This week" },
+  { value: "no_date", label: "No date" },
+];
+
+function FilterPanel({ filters, onFilters, onClose }: {
+  filters: Filters; onFilters: (f: Filters) => void; onClose: () => void;
+}) {
+  const togglePriority = (p: string) => {
+    const arr = filters.priorities;
+    onFilters({ ...filters, priorities: arr.includes(p) ? arr.filter(v => v !== p) : [...arr, p] });
+  };
+  const toggleDue = (d: string) => {
+    const arr = filters.dueDates;
+    onFilters({ ...filters, dueDates: arr.includes(d) ? arr.filter(v => v !== d) : [...arr, d] });
+  };
+  const hasAny = filters.priorities.length > 0 || filters.dueDates.length > 0;
+
+  return (
+    <div style={{
+      padding: "10px 16px", background: "var(--bg-elevated)",
+      borderBottom: "1px solid var(--border)",
+      display: "flex", gap: "20px", alignItems: "flex-start", flexWrap: "wrap",
+    }}>
+      <div>
+        <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>Priority</div>
+        <div style={{ display: "flex", gap: "4px" }}>
+          {Object.keys(PRIORITY_COLORS).map(p => (
+            <button key={p} onClick={() => togglePriority(p)} style={{
+              padding: "2px 8px", borderRadius: "10px", fontSize: "11px", cursor: "pointer",
+              border: `1px solid ${PRIORITY_COLORS[p] ?? "#9ca3af"}`,
+              background: filters.priorities.includes(p) ? (PRIORITY_COLORS[p] ?? "#9ca3af") + "33" : "transparent",
+              color: PRIORITY_COLORS[p] ?? "#9ca3af", textTransform: "capitalize",
+            }}>{p}</button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>Due date</div>
+        <div style={{ display: "flex", gap: "4px" }}>
+          {DUEDATE_OPTIONS.map(o => (
+            <button key={o.value} onClick={() => toggleDue(o.value)} style={{
+              padding: "2px 8px", borderRadius: "10px", fontSize: "11px", cursor: "pointer",
+              border: "1px solid var(--border)",
+              background: filters.dueDates.includes(o.value) ? "var(--accent-subtle, #eff6ff)" : "transparent",
+              color: filters.dueDates.includes(o.value) ? "var(--accent)" : "var(--text-secondary)",
+            }}>{o.label}</button>
+          ))}
+        </div>
+      </div>
+      {hasAny && (
+        <button onClick={() => onFilters({ priorities: [], dueDates: [] })} style={{
+          alignSelf: "flex-end", padding: "2px 8px", fontSize: "12px",
+          background: "none", border: "1px solid var(--border)", borderRadius: "4px",
+          cursor: "pointer", color: "var(--text-muted)",
+        }}>Clear all</button>
+      )}
+      <button onClick={onClose} style={{ marginLeft: "auto", alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", fontSize: "16px", color: "var(--text-muted)", padding: "0" }}>×</button>
+    </div>
+  );
+}
+
+// ── Toolbar ───────────────────────────────────────────────────────────────────
+
+function ListToolbar({
+  sortField, sortDir, onSort, groupBy, onGroup,
+  cols, onToggleCol, filters, onFilters, onAddTask,
+}: {
+  sortField: SortField; sortDir: "asc" | "desc"; onSort: (f: SortField) => void;
+  groupBy: GroupBy; onGroup: (g: GroupBy) => void;
+  cols: ColVis; onToggleCol: (k: keyof ColVis) => void;
+  filters: Filters; onFilters: (f: Filters) => void;
+  onAddTask: () => void;
+}) {
+  const [showSort, setShowSort] = useState(false);
+  const [showGroup, setShowGroup] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
+  const [showFilter, setShowFilter] = useState(false);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
+        setShowSort(false); setShowGroup(false); setShowOptions(false);
+      }
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  const hasActiveSort = sortField !== "position";
+  const hasActiveGroup = groupBy !== "section";
+  const hasActiveFilter = filters.priorities.length > 0 || filters.dueDates.length > 0;
+
+  const tbtn = (active?: boolean): React.CSSProperties => ({
+    padding: "5px 10px", fontSize: "12px",
+    background: active ? "var(--accent-subtle, #eff6ff)" : "none",
+    border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+    borderRadius: "5px", cursor: "pointer",
+    color: active ? "var(--accent)" : "var(--text-secondary)",
+    display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap",
+  });
+
+  const SORT_OPT: { label: string; value: SortField }[] = [
+    { label: "Default (position)", value: "position" },
+    { label: "Due date", value: "dueDate" },
+    { label: "Priority", value: "priority" },
+    { label: "Name (A–Z)", value: "title" },
+    { label: "Date created", value: "createdAt" },
+  ];
+  const GROUP_OPT: { label: string; value: GroupBy }[] = [
+    { label: "Section", value: "section" },
+    { label: "Assignee", value: "assignee" },
+    { label: "Priority", value: "priority" },
+    { label: "Status", value: "status" },
+  ];
+  const COL_OPT: { label: string; key: keyof ColVis }[] = [
+    { label: "Due date", key: "dueDate" },
+    { label: "Collaborators", key: "collaborators" },
+    { label: "Projects", key: "projects" },
+    { label: "Task visibility", key: "visibility" },
+  ];
+
+  const dropStyle: React.CSSProperties = {
+    position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 300,
+    background: "var(--bg-elevated)", border: "1px solid var(--border)",
+    borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+    minWidth: "180px", padding: "4px",
+  };
+  const dropItemStyle = (active: boolean): React.CSSProperties => ({
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    width: "100%", padding: "7px 12px", background: "none", border: "none",
+    cursor: "pointer", fontSize: "13px", borderRadius: "4px",
+    color: active ? "var(--accent)" : "var(--text-primary)",
+  });
+
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 16px", borderBottom: "1px solid var(--border)", background: "var(--bg)", gap: "8px", flexShrink: 0 }}>
+        <button onClick={onAddTask} style={{ padding: "5px 12px", fontSize: "12px", background: "var(--accent)", color: "white", border: "none", borderRadius: "5px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontWeight: 500 }}>
+          <span style={{ fontSize: "14px" }}>+</span> Add task <span style={{ fontSize: "10px", opacity: 0.7 }}>▾</span>
+        </button>
+
+        <div ref={dropRef} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+          <button onClick={() => setShowFilter(f => !f)} style={tbtn(hasActiveFilter || showFilter)}>
+            Filter{hasActiveFilter ? ` (${filters.priorities.length + filters.dueDates.length})` : ""}
+          </button>
+
+          <div style={{ position: "relative" }}>
+            <button onClick={() => { setShowSort(s => !s); setShowGroup(false); setShowOptions(false); }} style={tbtn(hasActiveSort)}>
+              Sort{hasActiveSort ? " ▲" : ""}
+            </button>
+            {showSort && (
+              <div style={dropStyle}>
+                {SORT_OPT.map(o => (
+                  <button key={o.value} onClick={() => { onSort(o.value); setShowSort(false); }} style={dropItemStyle(sortField === o.value)}>
+                    {o.label}
+                    {sortField === o.value && <span style={{ fontSize: "10px" }}>{sortDir === "asc" ? "▲" : "▼"}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ position: "relative" }}>
+            <button onClick={() => { setShowGroup(g => !g); setShowSort(false); setShowOptions(false); }} style={tbtn(hasActiveGroup)}>
+              Group{hasActiveGroup ? `: ${groupBy}` : ""}
+            </button>
+            {showGroup && (
+              <div style={dropStyle}>
+                {GROUP_OPT.map(o => (
+                  <button key={o.value} onClick={() => { onGroup(o.value); setShowGroup(false); }} style={dropItemStyle(groupBy === o.value)}>
+                    {o.label}
+                    {groupBy === o.value && <span>✓</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ position: "relative" }}>
+            <button onClick={() => { setShowOptions(o => !o); setShowSort(false); setShowGroup(false); }} style={tbtn()}>Options</button>
+            {showOptions && (
+              <div style={{ ...dropStyle, minWidth: "200px", padding: "10px 14px" }}>
+                <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "8px" }}>Columns</div>
+                {COL_OPT.map(o => (
+                  <label key={o.key} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 0", cursor: "pointer", fontSize: "13px", color: "var(--text-primary)" }}>
+                    <input type="checkbox" checked={cols[o.key]} onChange={() => onToggleCol(o.key)} style={{ accentColor: "var(--accent)" }} />
+                    {o.label}
+                  </label>
+                ))}
+                <div style={{ borderTop: "1px solid var(--border)", marginTop: "8px", paddingTop: "8px" }}>
+                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>+ Add custom field (coming soon)</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <button style={tbtn()}>🔍</button>
+        </div>
+      </div>
+
+      {showFilter && (
+        <FilterPanel filters={filters} onFilters={onFilters} onClose={() => setShowFilter(false)} />
+      )}
+    </>
+  );
+}
+
+// ── TaskRow ───────────────────────────────────────────────────────────────────
+
+interface TaskRowProps {
+  task: Task;
+  projectId: string;
+  project?: ProjectInfo | null;
+  depth: number;
+  cols: ColVis;
+  gridCols: string;
+  subtasks: Task[];
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onToggleComplete: (task: Task) => void;
+  onTaskClick: (id: string) => void;
+  addingSubtaskFor: string | null;
+  setAddingSubtaskFor: (id: string | null) => void;
+  onAddSubtask: (parentId: string, title: string) => Promise<void>;
+}
+
+function TaskRow({
+  task, project, depth, cols, gridCols,
+  subtasks, expanded, onToggleExpand, onToggleComplete, onTaskClick,
+  addingSubtaskFor, setAddingSubtaskFor, onAddSubtask, projectId,
+}: TaskRowProps) {
+  const [hovered, setHovered] = useState(false);
+  const [subtaskTitle, setSubtaskTitle] = useState("");
+  const done = task.status === "completed";
+  const overdue = isOverdue(task.dueDate, done);
+  const showDot = isNew(task.createdAt) && !done;
+  const hasSubtasks = (task.subtaskCount ?? 0) > 0 || subtasks.length > 0;
+
+  return (
+    <>
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: "grid", gridTemplateColumns: gridCols,
+          alignItems: "center", minHeight: "36px",
+          borderBottom: "1px solid var(--border)",
+          background: hovered ? "var(--panel-hover)" : "transparent",
+          paddingLeft: depth > 0 ? `${depth * 28}px` : "0",
+          opacity: done ? 0.55 : 1,
+        }}
+      >
+        {/* Blue dot */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {showDot && !done && (
+            <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#4f46e5" }} />
+          )}
+        </div>
+
+        {/* Checkbox */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Checkbox done={done} onToggle={e => { e.stopPropagation(); onToggleComplete(task); }} />
+        </div>
+
+        {/* Expand arrow */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {hasSubtasks && (
+            <button
+              onClick={e => { e.stopPropagation(); onToggleExpand(); }}
+              style={{
+                background: "none", border: "none", cursor: "pointer", padding: 0,
+                color: "var(--text-muted)", fontSize: "9px", lineHeight: 1,
+                transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+                transition: "transform 0.12s",
+              }}
+            >▶</button>
+          )}
+        </div>
+
+        {/* Name */}
+        <div
+          style={{ display: "flex", alignItems: "center", gap: "5px", padding: "0 8px", overflow: "hidden", cursor: "pointer" }}
+          onClick={() => onTaskClick(task.id)}
+        >
+          <span style={{
+            fontSize: "13px", color: "var(--text-primary)",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            textDecoration: done ? "line-through" : "none", flexShrink: 1, minWidth: 0,
+          }}>{task.title}</span>
+          {(task.commentCount ?? 0) > 0 && (
+            <span style={{ fontSize: "10px", color: "var(--text-muted)", flexShrink: 0, display: "flex", alignItems: "center", gap: "2px" }}>
+              💬 {task.commentCount}
+            </span>
+          )}
+          {(task.attachmentCount ?? 0) > 0 && (
+            <span style={{ fontSize: "10px", color: "var(--text-muted)", flexShrink: 0, display: "flex", alignItems: "center", gap: "2px" }}>
+              📎 {task.attachmentCount}
+            </span>
+          )}
+          {(task.subtaskCount ?? 0) > 0 && depth === 0 && (
+            <span style={{ fontSize: "10px", color: "var(--text-muted)", flexShrink: 0 }}>↳ {task.subtaskCount}</span>
+          )}
+          {hovered && depth === 0 && (
+            <button
+              onClick={e => { e.stopPropagation(); setAddingSubtaskFor(task.id); }}
+              style={{
+                marginLeft: "6px", padding: "1px 6px", fontSize: "10px",
+                background: "none", border: "1px solid var(--border)", borderRadius: "4px",
+                cursor: "pointer", color: "var(--text-muted)", flexShrink: 0, whiteSpace: "nowrap",
+              }}
+            >↳ Add subtask</button>
+          )}
+        </div>
+
+        {/* Due date */}
+        {cols.dueDate && (
+          <div style={{ padding: "0 8px", fontSize: "12px", color: overdue ? "#ef4444" : task.dueDate ? "var(--text-secondary)" : "var(--text-muted)" }}>
+            {task.dueDate ? fmtDate(task.dueDate) : ""}
+          </div>
+        )}
+
+        {/* Collaborators */}
+        {cols.collaborators && (
+          <div style={{ padding: "0 8px" }}>
+            <AvatarStack assignees={task.assignees ?? []} />
+          </div>
+        )}
+
+        {/* Projects */}
+        {cols.projects && (
+          <div style={{ padding: "0 8px", overflow: "hidden" }}>
+            {project && <ProjectBadge name={project.name} color={project.color} />}
+          </div>
+        )}
+
+        {/* Visibility */}
+        {cols.visibility && (
+          <div style={{ padding: "0 8px", fontSize: "11px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
+            <span>🔒</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Only me</span>
+          </div>
+        )}
+
+        {/* More */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {hovered && (
+            <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "13px", padding: 0 }}>···</button>
+          )}
+        </div>
+      </div>
+
+      {/* Inline add-subtask row */}
+      {addingSubtaskFor === task.id && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: "8px",
+          paddingLeft: `${(depth + 1) * 28 + 46}px`, padding: `4px 12px 4px ${(depth + 1) * 28 + 46}px`,
+          borderBottom: "1px solid var(--border)", background: "var(--bg)",
+        }}>
+          <div style={{ width: "14px", height: "14px", borderRadius: "50%", border: "2px solid var(--border-strong, #cbd5e1)", flexShrink: 0 }} />
+          <input
+            autoFocus value={subtaskTitle} onChange={e => setSubtaskTitle(e.target.value)}
+            onKeyDown={async e => {
+              if (e.key === "Enter" && subtaskTitle.trim()) {
+                await onAddSubtask(task.id, subtaskTitle.trim());
+                setSubtaskTitle(""); setAddingSubtaskFor(null);
+              }
+              if (e.key === "Escape") { setSubtaskTitle(""); setAddingSubtaskFor(null); }
+            }}
+            placeholder="Subtask name… (Enter to add)"
+            style={{ flex: 1, padding: "3px 8px", border: "1px solid var(--accent)", borderRadius: "4px", fontSize: "12px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }}
+          />
+          <button onClick={() => setAddingSubtaskFor(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "14px" }}>×</button>
+        </div>
+      )}
+
+      {/* Subtask rows */}
+      {expanded && subtasks.map(sub => (
+        <TaskRow
+          key={sub.id}
+          task={sub} projectId={projectId} project={project}
+          depth={depth + 1} cols={cols} gridCols={gridCols}
+          subtasks={[]} expanded={false} onToggleExpand={() => {}}
+          onToggleComplete={onToggleComplete} onTaskClick={onTaskClick}
+          addingSubtaskFor={addingSubtaskFor}
+          setAddingSubtaskFor={setAddingSubtaskFor}
+          onAddSubtask={onAddSubtask}
+        />
+      ))}
+    </>
+  );
+}
+
+// ── Filter / sort / group helpers ─────────────────────────────────────────────
+
+function applyFilters(tasks: Task[], filters: Filters): Task[] {
+  return tasks.filter(t => {
+    if (filters.priorities.length > 0 && !filters.priorities.includes(t.priority)) return false;
+    if (filters.dueDates.length > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      const weekEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const ok = filters.dueDates.some(d => {
+        if (d === "no_date") return !t.dueDate;
+        if (d === "today") return t.dueDate === today;
+        if (d === "overdue") return t.dueDate ? t.dueDate < today : false;
+        if (d === "this_week") return t.dueDate ? t.dueDate >= today && t.dueDate <= weekEnd : false;
+        return false;
+      });
+      if (!ok) return false;
+    }
+    return true;
+  });
+}
+
+function applySort(tasks: Task[], sortField: SortField, sortDir: "asc" | "desc"): Task[] {
+  if (sortField === "position") return [...tasks];
+  return [...tasks].sort((a, b) => {
+    let cmp = 0;
+    if (sortField === "dueDate") {
+      const av = a.dueDate ?? "9999-99-99"; const bv = b.dueDate ?? "9999-99-99";
+      cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    } else if (sortField === "priority") {
+      cmp = (PRIORITY_ORDER[a.priority] ?? 4) - (PRIORITY_ORDER[b.priority] ?? 4);
+    } else if (sortField === "title") {
+      cmp = a.title.localeCompare(b.title);
+    } else if (sortField === "createdAt") {
+      const av = a.createdAt ?? ""; const bv = b.createdAt ?? "";
+      cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    }
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+}
+
+function buildGroups(tasks: Task[], groupBy: GroupBy, sections: Section[]): TaskGroup[] {
+  if (groupBy === "section") {
+    const result: TaskGroup[] = [];
+    for (const s of sections) {
+      const st = tasks.filter(t => t.sectionId === s.id);
+      result.push({ key: s.id, label: s.name, tasks: st, sectionId: s.id });
+    }
+    const unsectioned = tasks.filter(t => !t.sectionId || !sections.find(s => s.id === t.sectionId));
+    if (unsectioned.length > 0) result.push({ key: "__none__", label: "No section", tasks: unsectioned });
+    return result;
+  }
+  if (groupBy === "priority") {
+    return ["urgent", "high", "medium", "low", "none"].map(p => ({
+      key: p, label: p.charAt(0).toUpperCase() + p.slice(1),
+      tasks: tasks.filter(t => t.priority === p),
+    })).filter(g => g.tasks.length > 0);
+  }
+  if (groupBy === "assignee") {
+    const map = new Map<string, TaskGroup>();
+    for (const t of tasks) {
+      const key = t.assigneeId ?? "__unassigned__";
+      if (!map.has(key)) {
+        const a = t.assignees?.[0];
+        map.set(key, { key, label: a ? (a.name || a.email) : "Unassigned", tasks: [] });
+      }
+      map.get(key)!.tasks.push(t);
+    }
+    return Array.from(map.values());
+  }
+  if (groupBy === "status") {
+    const labels: Record<string, string> = { not_started: "Not started", in_progress: "In progress", completed: "Completed" };
+    return ["not_started", "in_progress", "completed"].map(s => ({
+      key: s, label: labels[s] ?? s, tasks: tasks.filter(t => t.status === s),
+    })).filter(g => g.tasks.length > 0);
+  }
+  return [{ key: "all", label: "All tasks", tasks }];
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export function ProjectListView({
+  projectId, project, sections, tasks, setSections, setTasks, onTaskClick,
+}: ProjectListViewProps) {
+  // Toolbar state
+  const [sortField, setSortField] = useState<SortField>("position");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [groupBy, setGroupBy] = useState<GroupBy>("section");
+  const [filters, setFilters] = useState<Filters>({ priorities: [], dueDates: [] });
+  const [cols, setCols] = useState<ColVis>({ dueDate: true, collaborators: true, projects: true, visibility: true });
+
+  // Section / task management
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [addingInSection, setAddingInSection] = useState<string | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  // Section management
   const [renamingSection, setRenamingSection] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [sectionMenu, setSectionMenu] = useState<string | null>(null);
   const [colorPicker, setColorPicker] = useState<string | null>(null);
   const [addingSection, setAddingSection] = useState(false);
   const [newSectionName, setNewSectionName] = useState("");
+
+  // Subtask expansion
+  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
+  const [subtaskCache, setSubtaskCache] = useState<Record<string, Task[]>>({});
+  const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
+
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Close menu on outside click
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    const h = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setSectionMenu(null);
-        setColorPicker(null);
+        setSectionMenu(null); setColorPicker(null);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const sectionTasks = (sId: string) => tasks.filter(t => t.sectionId === sId && !t.completedAt);
+  const gridCols = buildGridCols(cols);
 
-  const addTask = async (sectionId: string) => {
+  const topLevel = tasks.filter(t => !t.parentTaskId);
+  const filtered = applyFilters(topLevel, filters);
+  const sorted = applySort(filtered, sortField, sortDir);
+  const groups = buildGroups(sorted, groupBy, sections);
+
+  const toggleSort = useCallback((f: SortField) => {
+    setSortField(prev => {
+      if (prev === f) { setSortDir(d => d === "asc" ? "desc" : "asc"); return f; }
+      setSortDir("asc"); return f;
+    });
+  }, []);
+
+  const toggleCol = useCallback((k: keyof ColVis) => {
+    setCols(c => ({ ...c, [k]: !c[k] }));
+  }, []);
+
+  const toggleExpand = useCallback(async (taskId: string) => {
+    const nowExpanded = !expandedTasks[taskId];
+    setExpandedTasks(prev => ({ ...prev, [taskId]: nowExpanded }));
+    if (nowExpanded && !subtaskCache[taskId]) {
+      const res = await fetch(`/api/pm/projects/${projectId}/tasks?parentTaskId=${taskId}`);
+      const d = await res.json() as { tasks?: Task[] };
+      setSubtaskCache(prev => ({ ...prev, [taskId]: d.tasks ?? [] }));
+    }
+  }, [expandedTasks, subtaskCache, projectId]);
+
+  const addTask = useCallback(async (sectionId: string | null) => {
     if (!newTaskTitle.trim()) { setAddingInSection(null); return; }
     const res = await fetch("/api/pm/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId, sectionId, title: newTaskTitle.trim() }),
     });
-    const d = await res.json();
+    const d = await res.json() as { task?: Task };
     if (d.task) setTasks([...tasks, d.task]);
     setNewTaskTitle(""); setAddingInSection(null);
-  };
+  }, [newTaskTitle, projectId, tasks, setTasks]);
 
-  const toggleComplete = async (task: Task) => {
+  const addSubtask = useCallback(async (parentId: string, title: string) => {
+    const res = await fetch("/api/pm/tasks", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, parentTaskId: parentId, title }),
+    });
+    const d = await res.json() as { task?: Task };
+    if (d.task) {
+      setSubtaskCache(prev => ({ ...prev, [parentId]: [...(prev[parentId] ?? []), d.task!] }));
+      setTasks(tasks.map(t => t.id === parentId ? { ...t, subtaskCount: (t.subtaskCount ?? 0) + 1 } : t));
+      setExpandedTasks(prev => ({ ...prev, [parentId]: true }));
+    }
+  }, [projectId, tasks, setTasks]);
+
+  const toggleComplete = useCallback(async (task: Task) => {
     if (task.status === "completed") {
       await fetch(`/api/pm/tasks/${task.id}/reopen`, { method: "POST" });
     } else {
       await fetch(`/api/pm/tasks/${task.id}/complete`, { method: "POST" });
     }
-    setTasks(tasks.map(t => t.id === task.id ? {
+    const upd = (t: Task): Task => t.id === task.id ? {
       ...t,
       status: t.status === "completed" ? "not_started" : "completed",
       completedAt: t.status === "completed" ? null : new Date().toISOString(),
-    } : t));
-  };
+    } : t;
+    setTasks(tasks.map(upd));
+    setSubtaskCache(prev => {
+      const next = { ...prev };
+      for (const k of Object.keys(next)) next[k] = next[k]!.map(upd);
+      return next;
+    });
+  }, [tasks, setTasks]);
 
+  // Section management
   const startRename = (section: Section) => {
-    setRenamingSection(section.id);
-    setRenameValue(section.name);
-    setSectionMenu(null);
+    setRenamingSection(section.id); setRenameValue(section.name); setSectionMenu(null);
   };
-
   const commitRename = async (sectionId: string) => {
     if (!renameValue.trim()) { setRenamingSection(null); return; }
     await fetch(`/api/pm/projects/${projectId}/sections/${sectionId}`, {
@@ -144,241 +820,206 @@ export function ProjectListView({ projectId, sections, tasks, setSections, setTa
     setSections(sections.map(s => s.id === sectionId ? { ...s, name: renameValue.trim() } : s));
     setRenamingSection(null);
   };
-
   const deleteSection = async (sectionId: string) => {
-    if (!confirm("Delete this section? Tasks in this section will become unsectioned.")) return;
+    if (!confirm("Delete this section? Tasks will become unsectioned.")) return;
     await fetch(`/api/pm/projects/${projectId}/sections/${sectionId}`, { method: "DELETE" });
     setSections(sections.filter(s => s.id !== sectionId));
     setSectionMenu(null);
   };
-
   const updateSectionColor = async (sectionId: string, color: string | null) => {
     await fetch(`/api/pm/projects/${projectId}/sections/${sectionId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ color }),
     });
     setSections(sections.map(s => s.id === sectionId ? { ...s, color } : s));
-    setColorPicker(null);
-    setSectionMenu(null);
+    setColorPicker(null); setSectionMenu(null);
   };
-
   const addSection = async () => {
     if (!newSectionName.trim()) { setAddingSection(false); return; }
     const res = await fetch(`/api/pm/projects/${projectId}/sections`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newSectionName.trim() }),
     });
-    const d = await res.json();
+    const d = await res.json() as { section?: Section };
     if (d.section) setSections([...sections, d.section]);
     setNewSectionName(""); setAddingSection(false);
   };
 
   return (
-    <div style={{ height: "100%", overflowY: "auto", padding: "16px 24px" }}>
-      {sections.map(section => {
-        const stasks = sectionTasks(section.id);
-        const isCollapsed = collapsed[section.id];
-        const isRenaming = renamingSection === section.id;
-        const isMenuOpen = sectionMenu === section.id;
-        const isColorOpen = colorPicker === section.id;
-        const sectionDot = section.color;
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      {/* Toolbar */}
+      <ListToolbar
+        sortField={sortField} sortDir={sortDir} onSort={toggleSort}
+        groupBy={groupBy} onGroup={setGroupBy}
+        cols={cols} onToggleCol={toggleCol}
+        filters={filters} onFilters={setFilters}
+        onAddTask={() => {
+          const first = groups[0];
+          if (first) { setCollapsed(c => ({ ...c, [first.key]: false })); setAddingInSection(first.key); }
+        }}
+      />
 
-        return (
-          <div key={section.id} style={{ marginBottom: "8px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 4px", position: "relative" }}>
-              {/* Collapse toggle */}
-              <button
-                onClick={() => setCollapsed(c => ({ ...c, [section.id]: !c[section.id] }))}
-                style={{ background: "none", border: "none", cursor: "pointer", padding: "0 2px", color: "var(--text-muted)", fontSize: "12px", flexShrink: 0 }}
-              >
-                {isCollapsed ? "▶" : "▾"}
-              </button>
+      {/* Column headers (sticky at top of scroll area) */}
+      <ColumnHeader gridCols={gridCols} cols={cols} sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
 
-              {/* Color dot */}
-              {sectionDot && (
-                <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: sectionDot, flexShrink: 0 }} />
-              )}
+      {/* Scrollable body */}
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        {groups.map(group => {
+          const sectionObj = sections.find(s => s.id === group.key);
+          const isCollapsed = collapsed[group.key] ?? false;
+          const isMenuOpen = sectionMenu === group.key;
+          const isColorOpen = colorPicker === group.key;
+          const isRenaming = renamingSection === group.key;
+          const showMgmt = groupBy === "section" && !!sectionObj;
+          const incompleteCnt = group.tasks.filter(t => t.status !== "completed").length;
 
-              {/* Section name / inline rename */}
-              {isRenaming ? (
-                <input
-                  autoFocus
-                  value={renameValue}
-                  onChange={e => setRenameValue(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") commitRename(section.id);
-                    if (e.key === "Escape") setRenamingSection(null);
-                  }}
-                  onBlur={() => commitRename(section.id)}
-                  style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", border: "1px solid var(--accent)", borderRadius: "4px", padding: "2px 6px", background: "var(--bg)", outline: "none", minWidth: "120px" }}
-                />
-              ) : (
-                <span
-                  onClick={() => startRename(section)}
-                  style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", cursor: "text", userSelect: "none" }}
-                  title="Click to rename"
+          return (
+            <div key={group.key}>
+              {/* Section / group header */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: "8px",
+                padding: "5px 12px 5px 8px",
+                background: "var(--bg-elevated)",
+                position: "sticky", top: "30px", zIndex: 9,
+                borderBottom: "1px solid var(--border)",
+              }}>
+                <button
+                  onClick={() => setCollapsed(c => ({ ...c, [group.key]: !c[group.key] }))}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "11px", padding: "0 2px", flexShrink: 0 }}
                 >
-                  {section.name}
-                </span>
-              )}
+                  {isCollapsed ? "▶" : "▾"}
+                </button>
 
-              <span style={{ fontSize: "11px", color: "var(--text-muted)", background: "var(--panel-hover)", padding: "1px 6px", borderRadius: "10px" }}>{stasks.length}</span>
+                {sectionObj?.color && (
+                  <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: sectionObj.color, flexShrink: 0 }} />
+                )}
 
-              {/* "..." menu button */}
-              <button
-                onClick={() => { setSectionMenu(isMenuOpen ? null : section.id); setColorPicker(null); }}
-                style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "14px", padding: "0 4px", lineHeight: 1, opacity: 0.7 }}
-                title="Section options"
-              >
-                ···
-              </button>
-
-              {/* Dropdown menu */}
-              {isMenuOpen && (
-                <div ref={menuRef} style={{
-                  position: "absolute", top: "100%", right: "0", zIndex: 200,
-                  background: "var(--bg-elevated)", border: "1px solid var(--border)",
-                  borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                  minWidth: "160px", padding: "4px",
-                }}>
-                  <button onClick={() => startRename(section)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", fontSize: "13px", color: "var(--text-primary)", borderRadius: "4px" }}>
-                    Rename section
-                  </button>
-                  <button onClick={() => { setColorPicker(section.id); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", fontSize: "13px", color: "var(--text-primary)", borderRadius: "4px" }}>
-                    Set color…
-                  </button>
-                  <div style={{ borderTop: "1px solid var(--border)", margin: "4px 0" }} />
-                  <button onClick={() => deleteSection(section.id)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", fontSize: "13px", color: "var(--negative)", borderRadius: "4px" }}>
-                    Delete section
-                  </button>
-                </div>
-              )}
-
-              {/* Color picker dropdown */}
-              {isColorOpen && (
-                <div ref={menuRef} style={{
-                  position: "absolute", top: "100%", right: "0", zIndex: 200,
-                  background: "var(--bg-elevated)", border: "1px solid var(--border)",
-                  borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                  padding: "12px", minWidth: "200px",
-                }}>
-                  <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "8px" }}>Section color</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                    {SECTION_COLORS.map(c => (
-                      <button
-                        key={c.label}
-                        onClick={() => updateSectionColor(section.id, c.value)}
-                        title={c.label}
-                        style={{
-                          width: "24px", height: "24px", borderRadius: "50%",
-                          background: c.value ?? "var(--panel-hover)",
-                          border: section.color === c.value ? "2px solid var(--accent)" : "2px solid transparent",
-                          cursor: "pointer",
-                          outline: "none",
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {!isCollapsed && (
-              <div style={{ background: "var(--bg-elevated)", borderRadius: "8px", border: "1px solid var(--border)", overflow: "hidden", marginLeft: "20px" }}>
-                {/* Header row */}
-                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 140px 80px 80px", gap: "8px", padding: "6px 12px", borderBottom: "1px solid var(--border)", background: "var(--panel-hover)" }}>
-                  <span style={{ width: "16px" }} />
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Title</span>
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Assignee</span>
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Due</span>
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Priority</span>
-                </div>
-
-                {stasks.map((task, i) => {
-                  const done = task.status === "completed";
-                  return (
-                    <div
-                      key={task.id}
-                      style={{
-                        display: "grid", gridTemplateColumns: "auto 1fr 140px 80px 80px", gap: "8px",
-                        padding: "8px 12px", alignItems: "center", cursor: "pointer",
-                        borderBottom: i < stasks.length - 1 ? "1px solid var(--border)" : "none",
-                        opacity: done ? 0.5 : 1,
-                      }}
-                      onClick={() => onTaskClick(task.id)}
-                    >
-                      <input
-                        type="checkbox" checked={done}
-                        onChange={e => { e.stopPropagation(); toggleComplete(task); }}
-                        style={{ width: "14px", height: "14px", accentColor: "var(--positive)", cursor: "pointer" }}
-                        onClick={e => e.stopPropagation()}
-                      />
-                      <span style={{ fontSize: "14px", color: "var(--text-primary)", textDecoration: done ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {task.title}
-                        {task.labels?.length > 0 && task.labels.map(l => (
-                          <span key={l} style={{ marginLeft: "6px", fontSize: "10px", padding: "1px 6px", borderRadius: "3px", background: "var(--accent-subtle)", color: "var(--accent)" }}>{l}</span>
-                        ))}
-                      </span>
-                      <AssigneeStack assignees={task.assignees ?? []} />
-                      <span style={{ fontSize: "12px", color: task.dueDate && new Date(task.dueDate) < new Date() && !done ? "var(--negative)" : "var(--text-muted)" }}>
-                        {task.dueDate ? new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
-                      </span>
-                      <PriorityDot priority={task.priority} />
-                    </div>
-                  );
-                })}
-
-                {/* Inline add task */}
-                {addingInSection === section.id ? (
-                  <div style={{ padding: "6px 12px", display: "flex", gap: "8px", alignItems: "center", borderTop: stasks.length > 0 ? "1px solid var(--border)" : "none" }}>
-                    <span style={{ width: "14px" }} />
-                    <input
-                      autoFocus value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter") addTask(section.id); if (e.key === "Escape") { setAddingInSection(null); setNewTaskTitle(""); } }}
-                      placeholder="Task title… (Enter to add)"
-                      style={{ flex: 1, padding: "4px 8px", border: "1px solid var(--accent)", borderRadius: "4px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }}
-                    />
-                    <button onClick={() => addTask(section.id)} style={{ padding: "4px 10px", background: "var(--accent)", color: "white", border: "none", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }}>Add</button>
-                    <button onClick={() => { setAddingInSection(null); setNewTaskTitle(""); }} style={{ padding: "4px 8px", background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "16px" }}>×</button>
-                  </div>
+                {isRenaming ? (
+                  <input
+                    autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") commitRename(group.key); if (e.key === "Escape") setRenamingSection(null); }}
+                    onBlur={() => commitRename(group.key)}
+                    style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", border: "1px solid var(--accent)", borderRadius: "4px", padding: "2px 6px", background: "var(--bg)", outline: "none", minWidth: "120px" }}
+                  />
                 ) : (
-                  <button
-                    onClick={() => setAddingInSection(section.id)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: "6px", width: "100%", padding: "8px 12px",
-                      background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "13px",
-                      borderTop: stasks.length > 0 ? "1px solid var(--border)" : "none",
-                    }}
-                  >
-                    <span style={{ fontSize: "16px" }}>+</span> Add task
-                  </button>
+                  <span
+                    onClick={showMgmt ? () => startRename(sectionObj!) : undefined}
+                    style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", cursor: showMgmt ? "text" : "default" }}
+                  >{group.label}</span>
+                )}
+
+                <span style={{ fontSize: "11px", color: "var(--text-muted)", background: "var(--panel-hover)", padding: "1px 6px", borderRadius: "10px" }}>
+                  {incompleteCnt}
+                </span>
+
+                {showMgmt && (
+                  <div style={{ marginLeft: "auto", position: "relative" }}>
+                    <button
+                      onClick={() => { setSectionMenu(isMenuOpen ? null : group.key); setColorPicker(null); }}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "14px", padding: "0 4px" }}
+                    >···</button>
+
+                    {isMenuOpen && (
+                      <div ref={menuRef} style={{ position: "absolute", top: "100%", right: 0, zIndex: 200, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: "160px", padding: "4px" }}>
+                        <button onClick={() => startRename(sectionObj!)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", fontSize: "13px", color: "var(--text-primary)", borderRadius: "4px" }}>Rename</button>
+                        <button onClick={() => setColorPicker(group.key)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", fontSize: "13px", color: "var(--text-primary)", borderRadius: "4px" }}>Set color…</button>
+                        <div style={{ borderTop: "1px solid var(--border)", margin: "4px 0" }} />
+                        <button onClick={() => deleteSection(group.key)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", fontSize: "13px", color: "#ef4444", borderRadius: "4px" }}>Delete section</button>
+                      </div>
+                    )}
+
+                    {isColorOpen && (
+                      <div ref={menuRef} style={{ position: "absolute", top: "100%", right: 0, zIndex: 200, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", padding: "12px", minWidth: "200px" }}>
+                        <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "8px" }}>Section color</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                          {SECTION_COLORS.map(c => (
+                            <button key={c.label} onClick={() => updateSectionColor(group.key, c.value)} title={c.label}
+                              style={{ width: "24px", height: "24px", borderRadius: "50%", background: c.value ?? "var(--panel-hover)", border: sectionObj!.color === c.value ? "2px solid var(--accent)" : "2px solid transparent", cursor: "pointer", outline: "none" }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
+
+              {/* Task rows */}
+              {!isCollapsed && (
+                <>
+                  {group.tasks.map(task => (
+                    <TaskRow
+                      key={task.id}
+                      task={task} projectId={projectId} project={project}
+                      depth={0} cols={cols} gridCols={gridCols}
+                      subtasks={subtaskCache[task.id] ?? []}
+                      expanded={expandedTasks[task.id] ?? false}
+                      onToggleExpand={() => toggleExpand(task.id)}
+                      onToggleComplete={toggleComplete}
+                      onTaskClick={onTaskClick}
+                      addingSubtaskFor={addingSubtaskFor}
+                      setAddingSubtaskFor={setAddingSubtaskFor}
+                      onAddSubtask={addSubtask}
+                    />
+                  ))}
+
+                  {/* Inline add task */}
+                  {addingInSection === group.key ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 12px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                      <div style={{ width: "8px", flexShrink: 0 }} />
+                      <div style={{ width: "16px", height: "16px", borderRadius: "50%", border: "2px solid var(--border-strong, #cbd5e1)", flexShrink: 0 }} />
+                      <div style={{ width: "16px", flexShrink: 0 }} />
+                      <input
+                        autoFocus value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") addTask(group.sectionId ?? null);
+                          if (e.key === "Escape") { setAddingInSection(null); setNewTaskTitle(""); }
+                        }}
+                        placeholder="Task name… (Enter to add)"
+                        style={{ flex: 1, padding: "4px 8px", border: "1px solid var(--accent)", borderRadius: "4px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }}
+                      />
+                      <button onClick={() => addTask(group.sectionId ?? null)} style={{ padding: "4px 10px", background: "var(--accent)", color: "white", border: "none", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }}>Add</button>
+                      <button onClick={() => { setAddingInSection(null); setNewTaskTitle(""); }} style={{ padding: "4px 8px", background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "16px" }}>×</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setAddingInSection(group.key)}
+                      style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 46px", width: "100%", background: "none", border: "none", borderBottom: "1px solid var(--border)", cursor: "pointer", color: "var(--text-muted)", fontSize: "13px" }}
+                    >
+                      <span style={{ fontSize: "15px" }}>+</span> Add task
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Add section (section group only) */}
+        {groupBy === "section" && (
+          <div style={{ padding: "8px 12px" }}>
+            {addingSection ? (
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <input
+                  autoFocus value={newSectionName} onChange={e => setNewSectionName(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") addSection(); if (e.key === "Escape") { setAddingSection(false); setNewSectionName(""); } }}
+                  placeholder="Section name…"
+                  style={{ flex: 1, maxWidth: "240px", padding: "6px 10px", border: "1px solid var(--accent)", borderRadius: "6px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }}
+                />
+                <button onClick={addSection} style={{ padding: "6px 12px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", cursor: "pointer" }}>Add</button>
+                <button onClick={() => { setAddingSection(false); setNewSectionName(""); }} style={{ padding: "6px 8px", background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "16px" }}>×</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setAddingSection(true)}
+                style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 4px", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "13px" }}
+              >
+                <span style={{ fontSize: "16px" }}>+</span> Add section
+              </button>
             )}
           </div>
-        );
-      })}
-
-      {/* Add section */}
-      {addingSection ? (
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", padding: "8px 4px", marginTop: "8px" }}>
-          <input
-            autoFocus value={newSectionName} onChange={e => setNewSectionName(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") addSection(); if (e.key === "Escape") { setAddingSection(false); setNewSectionName(""); } }}
-            placeholder="Section name…"
-            style={{ flex: 1, maxWidth: "240px", padding: "6px 10px", border: "1px solid var(--accent)", borderRadius: "6px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" }}
-          />
-          <button onClick={addSection} style={{ padding: "6px 12px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", cursor: "pointer" }}>Add</button>
-          <button onClick={() => { setAddingSection(false); setNewSectionName(""); }} style={{ padding: "6px 8px", background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "16px" }}>×</button>
-        </div>
-      ) : (
-        <button
-          onClick={() => setAddingSection(true)}
-          style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 4px", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "13px", marginTop: "8px" }}
-        >
-          <span style={{ fontSize: "16px" }}>+</span> Add section
-        </button>
-      )}
+        )}
+      </div>
     </div>
   );
 }
