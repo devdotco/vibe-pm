@@ -77,8 +77,12 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const [newFieldKey, setNewFieldKey] = useState("");
   const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
   const [editingFieldValue, setEditingFieldValue] = useState("");
+  const [orgUsers, setOrgUsers] = useState<Assignee[]>([]);
+  const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  const [assigneeSearch, setAssigneeSearch] = useState("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const assigneePickerRef = useRef<HTMLDivElement>(null);
 
   const loadAll = useCallback(() => {
     fetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => {
@@ -92,12 +96,22 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     fetch(`/api/pm/tasks/${taskId}/attachments`).then(r => r.json()).then(d => setAttachments(d.attachments ?? []));
   }, [taskId]);
 
+  useEffect(() => {
+    fetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
+  }, []);
+
   useEffect(() => { loadAll(); }, [loadAll]);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") { if (showAssigneePicker) { setShowAssigneePicker(false); } else { onClose(); } } };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, showAssigneePicker]);
+  useEffect(() => {
+    if (!showAssigneePicker) return;
+    const h = (e: MouseEvent) => { if (assigneePickerRef.current && !assigneePickerRef.current.contains(e.target as Node)) setShowAssigneePicker(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [showAssigneePicker]);
 
   const save = useCallback((patch: Partial<Task>) => {
     if (!task) return;
@@ -250,19 +264,55 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                   }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "12px", lineHeight: 1, padding: "0", marginLeft: "2px" }}>×</button>
                 </div>
               ))}
-              <button
-                onClick={() => {
-                  const userId = prompt("Enter user ID to assign:");
-                  if (userId?.trim()) {
-                    fetch(`/api/pm/tasks/${taskId}/assignees`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: userId.trim() }) })
-                      .then(r => r.json())
-                      .then(() => fetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json()).then(d => setAssignees(d.assignees ?? [])));
-                  }
-                }}
-                style={{ fontSize: "12px", color: "var(--accent)", background: "none", border: "1px dashed var(--border)", padding: "3px 8px", borderRadius: "20px", cursor: "pointer" }}
-              >
-                + Add
-              </button>
+              <div ref={assigneePickerRef} style={{ position: "relative" }}>
+                <button
+                  onClick={() => { setShowAssigneePicker(v => !v); setAssigneeSearch(""); }}
+                  style={{ fontSize: "12px", color: "var(--accent)", background: "none", border: "1px dashed var(--border)", padding: "3px 8px", borderRadius: "20px", cursor: "pointer" }}
+                >
+                  + Add
+                </button>
+                {showAssigneePicker && (
+                  <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 200, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", width: "220px", overflow: "hidden" }}>
+                    <div style={{ padding: "8px" }}>
+                      <input
+                        autoFocus
+                        value={assigneeSearch}
+                        onChange={e => setAssigneeSearch(e.target.value)}
+                        placeholder="Search people..."
+                        style={{ width: "100%", padding: "5px 8px", border: "1px solid var(--border)", borderRadius: "5px", fontSize: "12px", background: "var(--bg)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }}
+                      />
+                    </div>
+                    <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                      {orgUsers
+                        .filter(u => !assignees.some(a => a.id === u.id))
+                        .filter(u => !assigneeSearch || u.name.toLowerCase().includes(assigneeSearch.toLowerCase()) || u.email.toLowerCase().includes(assigneeSearch.toLowerCase()))
+                        .map(u => (
+                          <button
+                            key={u.id}
+                            onClick={async () => {
+                              await fetch(`/api/pm/tasks/${taskId}/assignees`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: u.id }) });
+                              const d = await fetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json());
+                              setAssignees(d.assignees ?? []);
+                              setShowAssigneePicker(false);
+                            }}
+                            style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "7px 12px", background: "none", border: "none", cursor: "pointer", color: "var(--text-primary)", fontSize: "13px", textAlign: "left" }}
+                            onMouseEnter={e => (e.currentTarget.style.background = "var(--panel-hover)")}
+                            onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                          >
+                            <Avatar name={u.name} size={22} />
+                            <div>
+                              <div style={{ fontWeight: 500, lineHeight: 1.2 }}>{u.name}</div>
+                              <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{u.email}</div>
+                            </div>
+                          </button>
+                        ))}
+                      {orgUsers.filter(u => !assignees.some(a => a.id === u.id)).filter(u => !assigneeSearch || u.name.toLowerCase().includes(assigneeSearch.toLowerCase()) || u.email.toLowerCase().includes(assigneeSearch.toLowerCase())).length === 0 && (
+                        <div style={{ padding: "12px", fontSize: "12px", color: "var(--text-muted)", textAlign: "center" }}>No users found</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
