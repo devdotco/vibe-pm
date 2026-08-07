@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 
 const MESSAGING_WEBHOOK_URL = process.env.MESSAGING_MODULE_URL
   ? `${process.env.MESSAGING_MODULE_URL}/api/messaging/pm-webhook`
-  : "https://messaging.vb.co/api/messaging/pm-webhook";
+  : "https://chat.vb.co/api/messaging/pm-webhook";
 
 export type PmEventType =
   | "task.created"
