@@ -13,6 +13,7 @@ export function TopBar({ user }: TopBarProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [showNewTask, setShowNewTask] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -97,8 +98,8 @@ export function TopBar({ user }: TopBarProps) {
       </button>
 
       {/* New task quick button */}
-      <a
-        href="/tasks/new"
+      <button
+        onClick={() => setShowNewTask(true)}
         style={{
           padding: "7px 14px",
           background: "var(--accent)",
@@ -106,7 +107,8 @@ export function TopBar({ user }: TopBarProps) {
           borderRadius: "6px",
           fontSize: "13px",
           fontWeight: 500,
-          textDecoration: "none",
+          border: "none",
+          cursor: "pointer",
           display: "flex",
           alignItems: "center",
           gap: "6px",
@@ -114,7 +116,15 @@ export function TopBar({ user }: TopBarProps) {
       >
         <span style={{ fontSize: "16px", lineHeight: 1 }}>+</span>
         New Task
-      </a>
+      </button>
+
+      {showNewTask && (
+        <NewTaskModal onClose={() => setShowNewTask(false)} onCreated={(projectId) => {
+          setShowNewTask(false);
+          router.push(`/projects/${projectId}`);
+          router.refresh();
+        }} />
+      )}
 
       {/* Search modal */}
       {showSearch && (
@@ -169,6 +179,76 @@ export function TopBar({ user }: TopBarProps) {
         </div>
       )}
     </header>
+  );
+}
+
+function NewTaskModal({ onClose, onCreated }: { onClose: () => void; onCreated: (projectId: string) => void }) {
+  const [title, setTitle] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [projects, setProjects] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/pm/projects").then(r => r.json()).then(d => {
+      const ps = d.projects ?? [];
+      setProjects(ps);
+      if (ps.length > 0) setProjectId(ps[0].id);
+    });
+  }, []);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !projectId) return;
+    setLoading(true);
+    await fetch("/api/pm/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: title.trim(), projectId, priority }),
+    });
+    setLoading(false);
+    onCreated(projectId);
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "8px 12px", border: "1px solid var(--border)",
+    borderRadius: "6px", fontSize: "14px", background: "var(--bg)",
+    color: "var(--text-primary)", outline: "none", boxSizing: "border-box",
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onClose}>
+      <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "12px", padding: "24px", width: "420px", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "20px" }}>New Task</h2>
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div>
+            <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: "6px", textTransform: "uppercase" }}>Task name</label>
+            <input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Write release notes" style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: "6px", textTransform: "uppercase" }}>Project</label>
+            <select value={projectId} onChange={e => setProjectId(e.target.value)} style={inputStyle}>
+              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: "6px", textTransform: "uppercase" }}>Priority</label>
+            <select value={priority} onChange={e => setPriority(e.target.value)} style={inputStyle}>
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "4px" }}>
+            <button type="button" onClick={onClose} style={{ padding: "8px 16px", borderRadius: "6px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: "14px", cursor: "pointer" }}>Cancel</button>
+            <button type="submit" disabled={loading || !title.trim() || !projectId} style={{ padding: "8px 16px", borderRadius: "6px", border: "none", background: "var(--accent)", color: "white", fontSize: "14px", fontWeight: 500, cursor: "pointer", opacity: loading || !title.trim() || !projectId ? 0.6 : 1 }}>
+              {loading ? "Creating..." : "Create Task"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
