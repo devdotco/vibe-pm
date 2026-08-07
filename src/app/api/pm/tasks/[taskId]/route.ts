@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks } from '@/lib/db/schema';
+import { tasks, projects } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
+import { fireProjectWebhooks } from '@/lib/webhooks';
 import { pusherServer, projectChannel } from '@/lib/pusher/server';
 import { eq, and, isNull } from 'drizzle-orm';
 
@@ -46,6 +47,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
   });
 
   pusherServer.trigger(projectChannel(existing.projectId, user.orgId), 'task.updated', { task }).catch(() => {});
+
+  // fire cross-app webhook
+  const [proj] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, existing.projectId)).limit(1);
+  if (proj) {
+    const webhookEvent = task.status === 'completed' ? 'task.completed' : 'task.updated';
+    fireProjectWebhooks(existing.projectId, webhookEvent, {
+      taskId: task.id,
+      taskTitle: task.title,
+      projectName: proj.name,
+      projectId: existing.projectId,
+      actorName: user.name,
+      status: task.status,
+    }).catch(() => {});
+  }
+
   return NextResponse.json({ task });
 }
 

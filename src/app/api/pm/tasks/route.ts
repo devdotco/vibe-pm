@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks, sections } from '@/lib/db/schema';
+import { tasks, sections, projects } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { dispatchEvent } from '@/lib/webhooks/dispatcher';
+import { fireProjectWebhooks } from '@/lib/webhooks';
 import { pusherServer, projectChannel } from '@/lib/pusher/server';
 import { positionBetween } from '@/lib/ordering';
 import { eq, and, isNull, asc, desc } from 'drizzle-orm';
@@ -43,6 +44,19 @@ export async function POST(req: NextRequest) {
   // async: fire webhook + pusher
   dispatchEvent({ eventType: 'task.created', orgId: user.orgId, projectId, taskId: task.id, triggeredBy: user.id, data: { title } });
   pusherServer.trigger(projectChannel(projectId, user.orgId), 'task.created', { task }).catch(() => {});
+
+  // fire cross-app webhook
+  const [proj] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (proj) {
+    fireProjectWebhooks(projectId, 'task.created', {
+      taskId: task.id,
+      taskTitle: task.title,
+      projectName: proj.name,
+      projectId,
+      actorName: user.name,
+      priority: task.priority,
+    }).catch(() => {});
+  }
 
   return NextResponse.json({ task }, { status: 201 });
 }

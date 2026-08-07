@@ -353,6 +353,24 @@ export const webhookOutbox = pgTable(
   (t) => [index("webhook_outbox_pending_idx").on(t.status, t.createdAt)]
 );
 
+// ── Project Channel Links ──────────────────────────────────────────────────────
+
+export const projectChannelLinks = pgTable(
+  "project_channel_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: text("org_id").notNull(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    channelId: text("channel_id").notNull(),
+    channelName: text("channel_name").notNull(),
+    webhookUrl: text("webhook_url").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("project_channel_links_unique_idx").on(t.projectId, t.channelId)]
+);
+
 // ── Auth tables (shared with other ViBe modules) ──────────────────────────────
 
 export const users = pgTable("users", {
@@ -426,3 +444,4 @@ export type Goal = typeof goals.$inferSelect;
 export type Automation = typeof automations.$inferSelect;
 export type PmNotification = typeof pmNotifications.$inferSelect;
 export type WebhookOutboxRow = typeof webhookOutbox.$inferSelect;
+export type ProjectChannelLink = typeof projectChannelLinks.$inferSelect;

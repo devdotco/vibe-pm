@@ -287,3 +287,15 @@ CREATE INDEX "tasks_parent_idx" ON "tasks" USING btree ("parent_task_id");--> st
 CREATE INDEX "tasks_source_message_idx" ON "tasks" USING btree ("source_message_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "team_members_team_user_idx" ON "team_members" USING btree ("team_id","user_id");--> statement-breakpoint
 CREATE INDEX "webhook_outbox_pending_idx" ON "webhook_outbox" USING btree ("status","created_at");
+-- Project channel links (added for cross-app messaging integration)
+CREATE TABLE IF NOT EXISTS "project_channel_links" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"org_id" text NOT NULL,
+	"project_id" uuid NOT NULL,
+	"channel_id" text NOT NULL,
+	"channel_name" text NOT NULL,
+	"webhook_url" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+ALTER TABLE "project_channel_links" ADD CONSTRAINT "project_channel_links_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
+CREATE UNIQUE INDEX IF NOT EXISTS "project_channel_links_unique_idx" ON "project_channel_links" USING btree ("project_id","channel_id");

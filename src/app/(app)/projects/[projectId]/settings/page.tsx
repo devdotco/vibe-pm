@@ -41,7 +41,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
     await fetch(`/api/pm/projects/${projectId}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
   };
 
-  const TABS = ["general", "members", "messaging", "automations"];
+  const TABS = ["general", "members", "messaging", "integrations", "automations"];
 
   if (!project) return <div style={{ padding: "32px", color: "var(--text-muted)" }}>Loading...</div>;
 
@@ -133,6 +133,10 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
             </div>
           </div>
         </div>
+      )}
+
+      {tab === "integrations" && (
+        <IntegrationsTab projectId={projectId} />
       )}
 
       {tab === "automations" && (
@@ -288,6 +292,121 @@ function MembersTab({ projectId }: { projectId: string }) {
         <div style={{ fontSize: "13px", color: "var(--text-muted)", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
           All available users are already members.
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── Integrations Tab ──────────────────────────────────────────────────────────
+
+interface ChannelLink {
+  id: string;
+  channelId: string;
+  channelName: string;
+  webhookUrl: string;
+}
+
+function IntegrationsTab({ projectId }: { projectId: string }) {
+  const [links, setLinks] = useState<ChannelLink[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [channelId, setChannelId] = useState("");
+  const [channelName, setChannelName] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const defaultWebhookUrl = (typeof window !== "undefined"
+    ? (process.env.NEXT_PUBLIC_MESSAGING_URL ?? "https://chat.vb.co")
+    : "https://chat.vb.co") + "/api/messaging/webhooks/pm";
+
+  useEffect(() => {
+    fetch(`/api/pm/projects/${projectId}/channel-links`)
+      .then((r) => r.json())
+      .then((d: { links: ChannelLink[] }) => {
+        setLinks(d.links ?? []);
+        setLoading(false);
+      });
+  }, [projectId]);
+
+  const addLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!channelId.trim() || !channelName.trim()) return;
+    setAdding(true);
+    const res = await fetch(`/api/pm/projects/${projectId}/channel-links`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channelId: channelId.trim(), channelName: channelName.trim(), webhookUrl: defaultWebhookUrl }),
+    });
+    const d = await res.json() as { link: ChannelLink };
+    if (d.link) {
+      setLinks((prev) => [...prev.filter((l) => l.id !== d.link.id), d.link]);
+      setChannelId("");
+      setChannelName("");
+      setShowAdd(false);
+    }
+    setAdding(false);
+  };
+
+  const removeLink = async (linkId: string) => {
+    await fetch(`/api/pm/projects/${projectId}/channel-links/${linkId}`, { method: "DELETE" });
+    setLinks((prev) => prev.filter((l) => l.id !== linkId));
+  };
+
+  const inputStyle = { width: "100%", padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", outline: "none" };
+
+  if (loading) return <div style={{ color: "var(--text-muted)", fontSize: "14px" }}>Loading...</div>;
+
+  return (
+    <div>
+      <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "8px" }}>
+        Messaging Channel Links
+      </div>
+      <div style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "16px" }}>
+        Link this project to a ViBe Messaging channel. Task events (create, complete, update) will be posted as bot messages in the linked channel.
+      </div>
+
+      {links.length === 0 && !showAdd && (
+        <div style={{ padding: "24px", textAlign: "center", background: "var(--bg)", borderRadius: "8px", border: "1px solid var(--border)", marginBottom: "16px" }}>
+          <div style={{ fontSize: "24px", marginBottom: "8px" }}>💬</div>
+          <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>No channels linked yet.</div>
+        </div>
+      )}
+
+      {links.map((link) => (
+        <div key={link.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 14px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", marginBottom: "8px" }}>
+          <span style={{ fontSize: "20px" }}>💬</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-primary)" }}>{link.channelName}</div>
+            <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Channel ID: {link.channelId}</div>
+          </div>
+          <button onClick={() => removeLink(link.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "16px", padding: "2px 4px" }}>×</button>
+        </div>
+      ))}
+
+      {showAdd ? (
+        <form onSubmit={addLink} style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "16px", background: "var(--bg)", borderRadius: "8px", border: "1px solid var(--border)" }}>
+          <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+            Open chat.vb.co → Channel Settings → Linked Projects to find the Channel ID.
+          </div>
+          <div>
+            <label style={{ fontSize: "12px", color: "var(--text-muted)", display: "block", marginBottom: "5px", textTransform: "uppercase", fontWeight: 600 }}>Channel ID</label>
+            <input value={channelId} onChange={(e) => setChannelId(e.target.value)} placeholder="UUID from chat.vb.co" style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ fontSize: "12px", color: "var(--text-muted)", display: "block", marginBottom: "5px", textTransform: "uppercase", fontWeight: 600 }}>Channel name (display)</label>
+            <input value={channelName} onChange={(e) => setChannelName(e.target.value)} placeholder="e.g. #engineering-alerts" style={inputStyle} />
+          </div>
+          <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Webhook URL: {defaultWebhookUrl}</div>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="button" onClick={() => setShowAdd(false)} style={{ padding: "7px 14px", border: "1px solid var(--border)", borderRadius: "6px", background: "transparent", color: "var(--text-secondary)", fontSize: "13px", cursor: "pointer" }}>Cancel</button>
+            <button type="submit" disabled={adding || !channelId.trim() || !channelName.trim()} style={{ padding: "7px 14px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", cursor: "pointer", opacity: (adding || !channelId.trim() || !channelName.trim()) ? 0.6 : 1 }}>
+              {adding ? "Linking..." : "Link channel"}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button onClick={() => setShowAdd(true)} style={{ padding: "8px 14px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+          <span style={{ fontSize: "14px" }}>+</span> Link Messaging Channel
+        </button>
       )}
     </div>
   );
