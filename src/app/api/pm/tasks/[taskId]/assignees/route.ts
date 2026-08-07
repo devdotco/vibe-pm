@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { taskAssignees, tasks, users } from '@/lib/db/schema';
+import { taskAssignees, tasks, users, projects } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { eq, and } from 'drizzle-orm';
+import { sendTaskAssignedEmail } from '@/lib/email/notifications';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   const user = await requireUser();
@@ -27,5 +28,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
     await logActivity({ taskId, projectId: task.projectId, orgId: user.orgId, userId: user.id, action: 'assigned', newValue: userId }, tx);
     return [a];
   });
+
+  // Send email notification to the assignee (fire and forget)
+  if (userId !== user.id) {
+    db.select({ id: users.id, name: users.name, email: users.email })
+      .from(users).where(eq(users.id, userId)).limit(1)
+      .then(async ([assigneeUser]) => {
+        if (!assigneeUser?.email) return;
+        const [project] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, task.projectId)).limit(1);
+        sendTaskAssignedEmail({
+          taskId,
+          taskTitle: task.title,
+          projectName: project?.name ?? 'ViBe PM',
+          taskUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://pm.vb.co'}/projects/${task.projectId}?task=${taskId}`,
+          recipientEmail: assigneeUser.email,
+          recipientName: assigneeUser.name,
+          actorName: user.name,
+        }).catch(() => {});
+      }).catch(() => {});
+  }
+
   return NextResponse.json({ assignee }, { status: 201 });
 }
