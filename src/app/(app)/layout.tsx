@@ -1,3 +1,4 @@
+import { AppSwitcher } from "@/components/pm/AppSwitcher";
 import { Sidebar } from "@/components/pm/Sidebar";
 import { TopBar } from "@/components/pm/TopBar";
 import { requireUser } from "@/lib/auth/session";
@@ -7,6 +8,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg)" }}>
+      {/* Narrow app-switcher strip */}
+      <AppSwitcher />
+      {/* Main sidebar */}
       <Sidebar user={user} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <TopBar user={user} />

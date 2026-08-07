@@ -253,14 +253,20 @@ function NewTaskModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
 }
 
 function getPageTitle(pathname: string): string {
+  if (pathname === "/home") return "Home";
   if (pathname === "/my-tasks") return "My Tasks";
   if (pathname === "/inbox") return "Inbox";
   if (pathname === "/goals") return "Goals";
+  if (pathname === "/portfolios") return "Portfolios";
+  if (pathname === "/projects") return "Projects";
+  if (pathname === "/workspaces") return "Workspaces";
   if (pathname.startsWith("/search")) return "Search";
   if (pathname.startsWith("/projects/")) {
     const parts = pathname.split("/");
     if (parts.length === 3) return "Project";
     if (parts[3] === "stats") return "Project Stats";
+    if (parts[3] === "settings") return "Project Settings";
+    if (parts[3] === "milestones") return "Milestones";
   }
   return "ViBe PM";
 }

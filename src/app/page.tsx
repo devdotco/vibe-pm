@@ -1,4 +1,4 @@
 import { redirect } from "next/navigation";
 export default function RootPage() {
-  redirect("/my-tasks");
+  redirect("/home");
 }
