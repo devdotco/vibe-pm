@@ -49,7 +49,7 @@ export default function SearchPage() {
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {type === "tasks" && (results as Array<{ task: { id: string; title: string; status: string; priority: string }; projectName: string }>).map(r => (
-          <a key={r.task.id} href={`/projects/${r.task.id}`} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", textDecoration: "none" }}>
+          <a key={r.task.id} href={`/projects/${r.task.projectId}`} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", textDecoration: "none" }}>
             <PriorityDot priority={r.task.priority} />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: "14px", color: "var(--text-primary)", fontWeight: 500 }}>{r.task.title}</div>
