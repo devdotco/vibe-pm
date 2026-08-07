@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, use } from "react";
+import { useRouter } from "next/navigation";
 
 interface Project {
   id: string; name: string; description: string | null; color: string; status: string;
@@ -163,6 +164,18 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
           </div>
 
           {saving && <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Saving...</div>}
+
+          {/* Danger zone */}
+          <div style={{ marginTop: "24px", padding: "16px", border: "1px solid #ef444440", borderRadius: "8px", background: "#ef444408" }}>
+            <div style={{ fontSize: "13px", fontWeight: 600, color: "#ef4444", marginBottom: "12px" }}>Danger Zone</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+              <div>
+                <div style={{ fontSize: "13px", color: "var(--text-primary)", fontWeight: 500 }}>Delete this project</div>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Permanently removes the project and all its tasks. This cannot be undone.</div>
+              </div>
+              <DeleteProjectButton projectId={projectId} projectName={project.name} />
+            </div>
+          </div>
         </div>
       )}
 
@@ -225,6 +238,58 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
       {tab === "members" && (
         <MembersTab projectId={projectId} />
       )}
+    </div>
+  );
+}
+
+// ── Delete Project Button ─────────────────────────────────────────────────────
+
+function DeleteProjectButton({ projectId, projectName }: { projectId: string; projectName: string }) {
+  const router = useRouter();
+  const [confirm, setConfirm] = useState(false);
+  const [input, setInput] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  if (!confirm) {
+    return (
+      <button
+        onClick={() => setConfirm(true)}
+        style={{ padding: "7px 14px", background: "#ef4444", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer", flexShrink: 0 }}
+      >
+        Delete project
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setConfirm(false); setInput(""); }}>
+      <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "12px", padding: "24px", width: "380px", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ fontSize: "16px", fontWeight: 700, marginBottom: "8px", color: "#ef4444" }}>Delete project?</h3>
+        <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "16px" }}>
+          This will permanently delete <strong>{projectName}</strong> and all its tasks, comments, and data. Type the project name to confirm.
+        </p>
+        <input
+          autoFocus
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder={projectName}
+          style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "14px", background: "var(--bg)", color: "var(--text-primary)", outline: "none", marginBottom: "16px", boxSizing: "border-box" }}
+        />
+        <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+          <button type="button" onClick={() => { setConfirm(false); setInput(""); }} style={{ padding: "7px 14px", border: "1px solid var(--border)", borderRadius: "6px", background: "transparent", color: "var(--text-secondary)", fontSize: "13px", cursor: "pointer" }}>Cancel</button>
+          <button
+            disabled={input !== projectName || deleting}
+            onClick={async () => {
+              setDeleting(true);
+              await fetch(`/api/pm/projects/${projectId}`, { method: "DELETE" });
+              router.push("/projects");
+            }}
+            style={{ padding: "7px 14px", background: "#ef4444", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer", opacity: (input !== projectName || deleting) ? 0.5 : 1 }}
+          >
+            {deleting ? "Deleting…" : "Delete permanently"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

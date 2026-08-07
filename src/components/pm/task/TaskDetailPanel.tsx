@@ -63,6 +63,8 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [comment, setComment] = useState("");
+  const [postingComment, setPostingComment] = useState(false);
+  const [commentError, setCommentError] = useState("");
   const [markdownPreview, setMarkdownPreview] = useState(false);
   const [addingSubtask, setAddingSubtask] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
@@ -80,9 +82,11 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const [orgUsers, setOrgUsers] = useState<Assignee[]>([]);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [assigneeSearch, setAssigneeSearch] = useState("");
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const assigneePickerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const loadAll = useCallback(() => {
     fetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => {
@@ -124,10 +128,28 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   }, [task, taskId]);
 
   const postComment = async () => {
-    if (!comment.trim()) return;
-    await fetch(`/api/pm/tasks/${taskId}/comments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: comment.trim() }) });
-    setComment("");
-    fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
+    if (!comment.trim() || postingComment) return;
+    setPostingComment(true);
+    setCommentError("");
+    try {
+      const res = await fetch(`/api/pm/tasks/${taskId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: comment.trim() }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setCommentError(d.error ?? `Failed to post (${res.status})`);
+        return;
+      }
+      setComment("");
+      const feedData = await fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json());
+      setFeed(feedData.feed ?? []);
+    } catch {
+      setCommentError("Network error — please try again");
+    } finally {
+      setPostingComment(false);
+    }
   };
 
   const addSubtask = async () => {
@@ -577,7 +599,12 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                     ) : (
                       <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
                         <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{item.userName ?? item.userId.slice(0, 8)}</span>
-                        {" "}{(ACTION_LABELS[item.action ?? ""] ?? (() => item.action ?? ""))({ oldValue: item.oldValue, newValue: item.newValue })}
+                        {" "}{(ACTION_LABELS[item.action ?? ""] ?? (() => item.action ?? ""))({
+                          oldValue: item.oldValue,
+                          newValue: item.action === "assigned" && item.newValue
+                            ? (orgUsers.find(u => u.id === item.newValue)?.name ?? item.newValue.slice(0, 8))
+                            : item.newValue,
+                        })}
                       </div>
                     )}
                     <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px" }}>
@@ -588,10 +615,71 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
               ))}
             </div>
             <div style={{ marginTop: "16px" }}>
-              <textarea value={comment} onChange={e => setComment(e.target.value)} placeholder="Add a comment..." rows={3}
-                style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit" }} />
+              <div style={{ position: "relative" }}>
+                <textarea
+                  ref={textareaRef}
+                  value={comment}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setComment(val);
+                    if (commentError) setCommentError("");
+                    // detect @mention before cursor
+                    const cursor = e.target.selectionStart ?? val.length;
+                    const before = val.slice(0, cursor);
+                    const match = before.match(/@([\w.]*)$/);
+                    setMentionQuery(match ? match[1]! : null);
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === "Escape") { setMentionQuery(null); return; }
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { postComment(); return; }
+                  }}
+                  placeholder="Add a comment… (⌘Enter to post)"
+                  rows={3}
+                  style={{ width: "100%", padding: "8px 10px", border: `1px solid ${commentError ? "#ef4444" : "var(--border)"}`, borderRadius: "6px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit" }}
+                />
+                {mentionQuery !== null && (
+                  <div style={{ position: "absolute", bottom: "calc(100% + 4px)", left: 0, zIndex: 300, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", width: "220px", maxHeight: "180px", overflowY: "auto" }}>
+                    {orgUsers
+                      .filter(u => !mentionQuery || u.name.toLowerCase().includes(mentionQuery.toLowerCase()) || u.email.toLowerCase().includes(mentionQuery.toLowerCase()))
+                      .slice(0, 8)
+                      .map(u => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onMouseDown={e => {
+                            e.preventDefault();
+                            // replace @query with @firstname
+                            const firstName = u.name.split(" ")[0]!;
+                            const cursor = textareaRef.current?.selectionStart ?? comment.length;
+                            const before = comment.slice(0, cursor);
+                            const after = comment.slice(cursor);
+                            const replaced = before.replace(/@([\w.]*)$/, `@${firstName} `);
+                            setComment(replaced + after);
+                            setMentionQuery(null);
+                            setTimeout(() => textareaRef.current?.focus(), 0);
+                          }}
+                          style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "7px 12px", background: "none", border: "none", cursor: "pointer", fontSize: "13px", color: "var(--text-primary)", textAlign: "left" }}
+                          onMouseEnter={e => (e.currentTarget.style.background = "var(--panel-hover)")}
+                          onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                        >
+                          <Avatar name={u.name} size={20} />
+                          <div>
+                            <div style={{ fontWeight: 500, lineHeight: 1.2 }}>{u.name}</div>
+                            <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{u.email}</div>
+                          </div>
+                        </button>
+                      ))}
+                    {orgUsers.filter(u => !mentionQuery || u.name.toLowerCase().includes(mentionQuery.toLowerCase()) || u.email.toLowerCase().includes(mentionQuery.toLowerCase())).length === 0 && (
+                      <div style={{ padding: "10px 12px", fontSize: "12px", color: "var(--text-muted)" }}>No users found</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              {commentError && <div style={{ fontSize: "12px", color: "#ef4444", marginTop: "4px" }}>{commentError}</div>}
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "6px" }}>
-                <button onClick={postComment} disabled={!comment.trim()} style={{ padding: "6px 14px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer", opacity: comment.trim() ? 1 : 0.5 }}>Post</button>
+                <button onClick={postComment} disabled={!comment.trim() || postingComment} style={{ padding: "6px 14px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer", opacity: (comment.trim() && !postingComment) ? 1 : 0.5 }}>
+                  {postingComment ? "Posting…" : "Post"}
+                </button>
               </div>
             </div>
           </div>
