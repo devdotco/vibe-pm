@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { projects, projectMembers, projectSettings, sections } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
-import { eq, and, or } from 'drizzle-orm';
+import { eq, and, or, ne } from 'drizzle-orm';
 
 const DEFAULT_SECTIONS = [
   { name: 'Backlog', position: 1000 },
@@ -18,7 +18,7 @@ export async function GET() {
     .select({ project: projects })
     .from(projectMembers)
     .innerJoin(projects, eq(projectMembers.projectId, projects.id))
-    .where(and(eq(projectMembers.userId, user.id), eq(projectMembers.orgId, user.orgId)));
+    .where(and(eq(projectMembers.userId, user.id), eq(projectMembers.orgId, user.orgId), ne(projects.status, 'archived')));
   return NextResponse.json({ projects: rows.map(r => r.project) });
 }
 
