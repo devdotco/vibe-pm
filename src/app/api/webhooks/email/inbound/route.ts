@@ -22,12 +22,23 @@ export async function POST(req: NextRequest) {
     to = body.to ?? '';
     text = body.text ?? '';
   } else {
-    // Direct from SendGrid Inbound Parse (form data)
+    // Direct from SendGrid or Mailgun (form data)
     const form = await req.formData();
     from = (form.get('from') as string | null) ?? '';
-    const envelope = JSON.parse((form.get('envelope') as string | null) ?? '{}');
-    to = (envelope.to?.[0] ?? (form.get('to') as string | null) ?? '').trim();
-    text = (form.get('text') as string | null) ?? '';
+    const rawEnvelope = (form.get('envelope') as string | null) ?? '{}';
+    const envelope = JSON.parse(rawEnvelope);
+    to = (
+      envelope.to?.[0] ??
+      (form.get('to') as string | null) ??
+      (form.get('recipient') as string | null) ?? // Mailgun
+      ''
+    ).trim();
+    text = (
+      (form.get('text') as string | null) ||
+      (form.get('stripped-text') as string | null) ||   // Mailgun
+      (form.get('body-plain') as string | null) ||      // Mailgun legacy
+      ''
+    );
   }
 
   // Extract sender email from "Name <email>" or bare email
