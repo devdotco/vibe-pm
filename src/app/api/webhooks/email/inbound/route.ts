@@ -3,11 +3,14 @@ import { db } from '@/lib/db';
 import { taskComments, tasks, users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { verifyReplyAddress, stripQuotedReply } from '@/lib/email/notifications';
+import { pusherServer } from '@/lib/pusher/server';
 
 export async function POST(req: NextRequest) {
   let from: string, to: string, text: string;
 
   const contentType = req.headers.get('content-type') ?? '';
+  console.log('[pm-inbound] received', { contentType });
+
   if (contentType.includes('application/json')) {
     // Internal proxy call from messaging app
     const secret = req.headers.get('x-internal-secret');
@@ -33,8 +36,12 @@ export async function POST(req: NextRequest) {
   if (!fromEmail) return NextResponse.json({ error: 'Cannot determine sender email' }, { status: 400 });
 
   // Verify HMAC on the reply address
+  console.log('[pm-inbound] verifying', { to, fromEmail });
   const parsed = verifyReplyAddress(to, fromEmail);
-  if (!parsed) return NextResponse.json({ error: 'Invalid reply address' }, { status: 400 });
+  if (!parsed) {
+    console.error('[pm-inbound] invalid reply address', { to, fromEmail });
+    return NextResponse.json({ error: 'Invalid reply address' }, { status: 400 });
+  }
 
   const { type, entityId } = parsed;
   const replyText = stripQuotedReply(text);
@@ -62,13 +69,18 @@ export async function POST(req: NextRequest) {
     if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
     // Insert comment sourced from email
-    await db.insert(taskComments).values({
+    const [comment] = await db.insert(taskComments).values({
       taskId,
       orgId: task.orgId,
       userId: user.id,
       content: replyText,
       source: 'email',
-    });
+    }).returning();
+
+    console.log('[pm-inbound] inserted comment', comment?.id);
+
+    // Broadcast on task-specific channel so open task panels refresh in real-time
+    pusherServer.trigger(`task-${taskId}`, 'task.comment', { commentId: comment?.id }).catch(() => {});
 
     return NextResponse.json({ ok: true });
   }

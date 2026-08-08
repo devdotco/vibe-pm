@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
+import Pusher from 'pusher-js';
 import { StatusSelect } from "@/components/pm/StatusBadge";
 import { PrioritySelect } from "@/components/pm/PriorityBadge";
 import ReactMarkdown from "react-markdown";
@@ -130,6 +131,16 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [showAssigneePicker]);
+
+  // Real-time: refresh feed when an email reply lands via inbound webhook
+  useEffect(() => {
+    const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, { cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER! });
+    const ch = pusher.subscribe(`task-${taskId}`);
+    ch.bind('task.comment', () => {
+      fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
+    });
+    return () => { pusher.unsubscribe(`task-${taskId}`); pusher.disconnect(); };
+  }, [taskId]);
 
   const save = useCallback((patch: Partial<Task>) => {
     if (!task) return;
