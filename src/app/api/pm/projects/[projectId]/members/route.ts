@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { projectMembers, users, projects } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { eq, and } from 'drizzle-orm';
-import { Resend } from 'resend';
+import sgMail from '@sendgrid/mail';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   const user = await requireUser();
@@ -32,16 +32,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
     .returning();
 
   // Email the added member (fire and forget)
-  if (userId !== user.id && process.env.RESEND_API_KEY) {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  if (userId !== user.id && apiKey) {
     Promise.all([
       db.select().from(users).where(eq(users.id, userId)).limit(1),
       db.select().from(projects).where(eq(projects.id, projectId)).limit(1),
     ]).then(async ([[addedUser], [project]]) => {
       if (!addedUser?.email || !project) return;
-      const resend = new Resend(process.env.RESEND_API_KEY);
+      sgMail.setApiKey(apiKey);
       const projectUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://pm.vb.co'}/projects/${projectId}`;
-      await resend.emails.send({
-        from: process.env.EMAIL_FROM ?? 'ViBe PM <notifications@dev.co>',
+      await sgMail.send({
+        from: process.env.EMAIL_FROM ?? 'ViBe PM <notifications@vb.co>',
         to: addedUser.email,
         subject: `${user.name} added you to ${project.name}`,
         html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">

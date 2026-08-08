@@ -2,51 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { taskComments, tasks, users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
-import crypto from 'crypto';
 import { verifyReplyAddress, stripQuotedReply } from '@/lib/email/notifications';
 
-/**
- * Verify a Mailgun inbound webhook signature.
- * Mailgun signs requests with: HMAC-SHA256(MAILGUN_WEBHOOK_KEY, timestamp + token)
- * The hex digest must equal the `signature` field.
- */
-function verifyMailgunSignature(
-  webhookKey: string,
-  timestamp: string,
-  token: string,
-  signature: string
-): boolean {
-  const digest = crypto
-    .createHmac('sha256', webhookKey)
-    .update(timestamp + token)
-    .digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signature));
-}
-
 export async function POST(req: NextRequest) {
-  const MAILGUN_WEBHOOK_KEY = process.env.MAILGUN_WEBHOOK_KEY;
+  let from: string, to: string, text: string;
 
-  // Parse Mailgun's form-encoded payload
-  const form = await req.formData();
-
-  const timestamp = (form.get('timestamp') as string | null) ?? '';
-  const token = (form.get('token') as string | null) ?? '';
-  const signature = (form.get('signature') as string | null) ?? '';
-
-  // Verify Mailgun signature (skip only in dev when key is not set)
-  if (MAILGUN_WEBHOOK_KEY) {
-    if (!timestamp || !token || !signature) {
-      return NextResponse.json({ error: 'Missing Mailgun signature fields' }, { status: 401 });
+  const contentType = req.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    // Internal proxy call from messaging app
+    const secret = req.headers.get('x-internal-secret');
+    if (!secret || secret !== (process.env.EMAIL_REPLY_SECRET ?? '')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (!verifyMailgunSignature(MAILGUN_WEBHOOK_KEY, timestamp, token, signature)) {
-      return NextResponse.json({ error: 'Invalid Mailgun signature' }, { status: 401 });
-    }
+    const body = await req.json();
+    from = body.from ?? '';
+    to = body.to ?? '';
+    text = body.text ?? '';
+  } else {
+    // Direct from SendGrid Inbound Parse (form data)
+    const form = await req.formData();
+    from = (form.get('from') as string | null) ?? '';
+    const envelope = JSON.parse((form.get('envelope') as string | null) ?? '{}');
+    to = (envelope.to?.[0] ?? (form.get('to') as string | null) ?? '').trim();
+    text = (form.get('text') as string | null) ?? '';
   }
-
-  // Extract fields from Mailgun's form payload
-  const from = (form.get('from') as string | null) ?? (form.get('sender') as string | null) ?? '';
-  const to = ((form.get('recipient') as string | null) ?? '').split(',')[0].trim();
-  const text = (form.get('body-plain') as string | null) ?? '';
 
   // Extract sender email from "Name <email>" or bare email
   const fromEmailMatch = from.match(/<([^>]+)>/) ?? from.match(/(\S+@\S+)/);
