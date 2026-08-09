@@ -433,6 +433,114 @@ function ListToolbar({
   );
 }
 
+// ── BulkActionBar ─────────────────────────────────────────────────────────────
+
+interface BulkBarProps {
+  selectedIds: string[];
+  orgUsers: Assignee[];
+  sections: Section[];
+  onAction: (action: string, value?: string) => void;
+  onClear: () => void;
+}
+
+function BulkActionBar({ selectedIds, orgUsers, sections, onAction, onClear }: BulkBarProps) {
+  const [showAssign, setShowAssign] = useState(false);
+  const [showPriority, setShowPriority] = useState(false);
+  const [showMove, setShowMove] = useState(false);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (popRef.current && !popRef.current.contains(e.target as Node)) {
+        setShowAssign(false); setShowPriority(false); setShowMove(false);
+      }
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  const btnStyle: React.CSSProperties = {
+    padding: "5px 12px", fontSize: "12px", fontWeight: 500, borderRadius: "6px",
+    border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.12)",
+    color: "white", cursor: "pointer", whiteSpace: "nowrap",
+  };
+  const dangerStyle: React.CSSProperties = { ...btnStyle, background: "rgba(239,68,68,0.3)", border: "1px solid rgba(239,68,68,0.5)" };
+
+  return (
+    <div style={{
+      position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
+      background: "var(--text-primary)", color: "white",
+      borderRadius: "10px", padding: "10px 16px",
+      display: "flex", alignItems: "center", gap: "8px",
+      boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+      zIndex: 500, userSelect: "none",
+    }} ref={popRef}>
+      <span style={{ fontSize: "13px", fontWeight: 600, marginRight: "6px" }}>
+        {selectedIds.length} selected
+      </span>
+
+      <button style={btnStyle} onClick={() => onAction('complete')}>Complete</button>
+
+      <div style={{ position: "relative" }}>
+        <button style={btnStyle} onClick={() => { setShowAssign(v => !v); setShowPriority(false); setShowMove(false); }}>
+          Assign ▾
+        </button>
+        {showAssign && (
+          <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", minWidth: "180px", maxHeight: "240px", overflowY: "auto", padding: "4px" }}>
+            {orgUsers.map(u => (
+              <button key={u.id} onClick={() => { onAction('assign', u.id); setShowAssign(false); }}
+                style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "7px 10px", background: "none", border: "none", cursor: "pointer", color: "var(--text-primary)", fontSize: "13px", borderRadius: "4px" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "var(--panel-hover)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "none")}>
+                {u.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ position: "relative" }}>
+        <button style={btnStyle} onClick={() => { setShowPriority(v => !v); setShowAssign(false); setShowMove(false); }}>
+          Priority ▾
+        </button>
+        {showPriority && (
+          <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", minWidth: "140px", padding: "4px" }}>
+            {['urgent', 'high', 'medium', 'low', 'none'].map(p => (
+              <button key={p} onClick={() => { onAction('change_priority', p); setShowPriority(false); }}
+                style={{ display: "block", width: "100%", padding: "7px 10px", background: "none", border: "none", cursor: "pointer", color: PRIORITY_COLORS[p] ?? "#9ca3af", fontSize: "13px", textAlign: "left", textTransform: "capitalize", borderRadius: "4px" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "var(--panel-hover)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "none")}>
+                {p}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ position: "relative" }}>
+        <button style={btnStyle} onClick={() => { setShowMove(v => !v); setShowAssign(false); setShowPriority(false); }}>
+          Move ▾
+        </button>
+        {showMove && (
+          <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", minWidth: "160px", maxHeight: "240px", overflowY: "auto", padding: "4px" }}>
+            {sections.map(s => (
+              <button key={s.id} onClick={() => { onAction('move_section', s.id); setShowMove(false); }}
+                style={{ display: "block", width: "100%", padding: "7px 10px", background: "none", border: "none", cursor: "pointer", color: "var(--text-primary)", fontSize: "13px", textAlign: "left", borderRadius: "4px" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "var(--panel-hover)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "none")}>
+                {s.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <button style={dangerStyle} onClick={() => { if (confirm(`Delete ${selectedIds.length} tasks?`)) onAction('delete'); }}>Delete</button>
+      <button style={{ ...btnStyle, background: "transparent", border: "1px solid rgba(255,255,255,0.15)" }} onClick={onClear}>Clear</button>
+    </div>
+  );
+}
+
 // ── TaskRow ───────────────────────────────────────────────────────────────────
 
 interface TaskRowProps {
@@ -450,12 +558,16 @@ interface TaskRowProps {
   addingSubtaskFor: string | null;
   setAddingSubtaskFor: (id: string | null) => void;
   onAddSubtask: (parentId: string, title: string) => Promise<void>;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
+  anySelected: boolean;
 }
 
 function TaskRow({
   task, project, depth, cols, gridCols,
   subtasks, expanded, onToggleExpand, onToggleComplete, onTaskClick,
   addingSubtaskFor, setAddingSubtaskFor, onAddSubtask, projectId,
+  selected, onToggleSelect, anySelected,
 }: TaskRowProps) {
   const [hovered, setHovered] = useState(false);
   const [subtaskTitle, setSubtaskTitle] = useState("");
@@ -463,25 +575,43 @@ function TaskRow({
   const overdue = isOverdue(task.dueDate, done);
   const showDot = isNew(task.createdAt) && !done;
   const hasSubtasks = (task.subtaskCount ?? 0) > 0 || subtasks.length > 0;
+  const showSelectBox = hovered || selected || anySelected;
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === " " && e.target === e.currentTarget) { e.preventDefault(); onToggleSelect(task.id); }
+  };
 
   return (
     <>
       <div
+        tabIndex={0}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        onKeyDown={handleKeyDown}
         style={{
           display: "grid", gridTemplateColumns: gridCols,
           alignItems: "center", minHeight: "36px",
           borderBottom: "1px solid var(--border)",
-          background: hovered ? "var(--panel-hover)" : "transparent",
+          background: selected ? "var(--accent-subtle, #eff6ff)" : hovered ? "var(--panel-hover)" : "transparent",
           paddingLeft: depth > 0 ? `${depth * 28}px` : "0",
           opacity: done ? 0.55 : 1,
+          outline: "none",
         }}
       >
-        {/* Blue dot */}
+        {/* Selection checkbox / blue dot */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-          {showDot && !done && (
-            <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#4f46e5" }} />
+          {showSelectBox ? (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={e => { e.stopPropagation(); onToggleSelect(task.id); }}
+              onClick={e => e.stopPropagation()}
+              style={{ width: "13px", height: "13px", accentColor: "var(--accent)", cursor: "pointer", flexShrink: 0 }}
+            />
+          ) : (
+            showDot && !done && (
+              <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#4f46e5" }} />
+            )
           )}
         </div>
 
@@ -612,6 +742,7 @@ function TaskRow({
           addingSubtaskFor={addingSubtaskFor}
           setAddingSubtaskFor={setAddingSubtaskFor}
           onAddSubtask={onAddSubtask}
+          selected={selected} onToggleSelect={onToggleSelect} anySelected={anySelected}
         />
       ))}
     </>
@@ -724,6 +855,10 @@ export function ProjectListView({
   const [subtaskCache, setSubtaskCache] = useState<Record<string, Task[]>>({});
   const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
 
+  // Bulk selection
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [orgUsers, setOrgUsers] = useState<Assignee[]>([]);
+
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -735,6 +870,33 @@ export function ProjectListView({
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
+
+  useEffect(() => {
+    fetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
+  }, []);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedTaskIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const runBulkAction = useCallback(async (action: string, value?: string) => {
+    const taskIds = Array.from(selectedTaskIds);
+    const res = await fetch("/api/pm/tasks/bulk", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ taskIds, action, value }),
+    });
+    const data = await res.json() as { tasks?: Task[] };
+    if (data.tasks) {
+      const updMap = new Map(data.tasks.map(t => [t.id, t]));
+      setTasks(tasks.map(t => updMap.has(t.id) ? { ...t, ...updMap.get(t.id) } : t));
+    }
+    if (action === 'delete') setTasks(tasks.filter(t => !selectedTaskIds.has(t.id)));
+    setSelectedTaskIds(new Set());
+  }, [selectedTaskIds, tasks, setTasks]);
 
   const gridCols = buildGridCols(cols);
 
@@ -960,6 +1122,9 @@ export function ProjectListView({
                       addingSubtaskFor={addingSubtaskFor}
                       setAddingSubtaskFor={setAddingSubtaskFor}
                       onAddSubtask={addSubtask}
+                      selected={selectedTaskIds.has(task.id)}
+                      onToggleSelect={toggleSelect}
+                      anySelected={selectedTaskIds.size > 0}
                     />
                   ))}
 
@@ -1020,6 +1185,16 @@ export function ProjectListView({
           </div>
         )}
       </div>
+
+      {selectedTaskIds.size > 0 && (
+        <BulkActionBar
+          selectedIds={Array.from(selectedTaskIds)}
+          orgUsers={orgUsers}
+          sections={sections}
+          onAction={runBulkAction}
+          onClear={() => setSelectedTaskIds(new Set())}
+        />
+      )}
     </div>
   );
 }

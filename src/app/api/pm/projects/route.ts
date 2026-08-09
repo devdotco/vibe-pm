@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { projects, projectMembers, projectSettings, sections } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { eq, and, or, ne } from 'drizzle-orm';
+import { validate, CreateProjectSchema } from '@/lib/validate';
+import { rateLimit } from '@/lib/rate-limit';
 
 const DEFAULT_SECTIONS = [
   { name: 'Backlog', position: 1000 },
@@ -24,12 +26,17 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const user = await requireUser();
-  const { name, description, color, icon, teamId, isPublic } = await req.json();
-  if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 });
+  if (!rateLimit(`projects:${user.id}`, 10, 60_000)) {
+    return NextResponse.json({ error: 'Too many requests. Slow down.' }, { status: 429 });
+  }
+  const body = await req.json();
+  const v = validate(CreateProjectSchema, body);
+  if (!v.success) return v.response;
+  const { name, description, color, icon, teamId, isPublic, dueDate } = v.data;
 
   const [project] = await db.insert(projects).values({
     orgId: user.orgId, name, description, color: color ?? '#2f5cff', icon,
-    teamId, isPublic: isPublic ?? false, createdBy: user.id,
+    teamId, isPublic: isPublic ?? false, dueDate, createdBy: user.id,
   }).returning();
 
   await db.insert(projectMembers).values({

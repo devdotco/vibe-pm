@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import Pusher from 'pusher-js';
+import { Skeleton, SkeletonText, SkeletonAvatar } from "@/components/ui/Skeleton";
 import { StatusSelect } from "@/components/pm/StatusBadge";
 import { PrioritySelect } from "@/components/pm/PriorityBadge";
 import ReactMarkdown from "react-markdown";
@@ -21,7 +22,7 @@ function renderWithMentions(text: string) {
 
 interface Task {
   id: string; title: string; description: string | null; status: string; priority: string;
-  dueDate: string | null; startDate: string | null; assigneeId: string | null; sectionId: string | null;
+  dueDate: string | null; dueTime: string | null; startDate: string | null; assigneeId: string | null; sectionId: string | null;
   labels: string[]; projectId: string; sourceMessageId: string | null; sourceChannelId: string | null;
   completedAt: string | null; parentTaskId: string | null;
   estimatedMinutes: number | null; actualMinutes: number | null;
@@ -95,6 +96,10 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const [editingFieldValue, setEditingFieldValue] = useState("");
   const [orgUsers, setOrgUsers] = useState<Assignee[]>([]);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  const [watching, setWatching] = useState(false);
+  const [watcherCount, setWatcherCount] = useState(0);
+  const [recurrence, setRecurrence] = useState<{ frequency: string; nextDueDate: string } | null>(null);
+  const [showRepeatPicker, setShowRepeatPicker] = useState(false);
   const [assigneeSearch, setAssigneeSearch] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState(-1);
@@ -108,6 +113,9 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
       setTask(d.task);
       setCustomFields((d.task?.customFields as Record<string, string>) ?? {});
     });
+    fetch(`/api/pm/tasks/${taskId}/watch`).then(r => r.json()).then(d => setWatching(d.watching ?? false));
+    fetch(`/api/pm/tasks/${taskId}/watchers`).then(r => r.json()).then(d => setWatcherCount((d.watchers ?? []).length));
+    fetch(`/api/pm/tasks/${taskId}/recurrence`).then(r => r.json()).then(d => setRecurrence(d.recurrence));
     fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
     fetch(`/api/pm/tasks/${taskId}/subtasks`).then(r => r.json()).then(d => setSubtasks(d.subtasks ?? []));
     fetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json()).then(d => setAssignees(d.assignees ?? []));
@@ -261,8 +269,38 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   };
 
   if (!task) return (
-    <div style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: "520px", background: "var(--bg-elevated)", borderLeft: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", zIndex: 100 }}>
-      Loading...
+    <div style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: "540px", maxWidth: "100vw", background: "var(--bg-elevated)", borderLeft: "1px solid var(--border)", display: "flex", flexDirection: "column", zIndex: 100, boxShadow: "-4px 0 24px rgba(0,0,0,0.08)" }}>
+      {/* Skeleton header */}
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "16px 20px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+        <Skeleton style={{ width: 16, height: 16, borderRadius: "50%" }} />
+        <SkeletonText width="60%" height={16} />
+        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "20px", lineHeight: 1, padding: "0 2px", marginLeft: "auto" }}>×</button>
+      </div>
+      <div style={{ padding: "16px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+        {[...Array(4)].map((_, i) => (
+          <div key={i}>
+            <SkeletonText width="50%" height={10} />
+            <Skeleton style={{ height: 28, marginTop: 6 }} />
+          </div>
+        ))}
+      </div>
+      <div style={{ padding: "14px 20px", borderTop: "1px solid var(--border)" }}>
+        <SkeletonText width="40%" height={10} />
+        <div style={{ display: "flex", gap: "6px", marginTop: 8 }}>
+          {[...Array(3)].map((_, i) => <SkeletonAvatar key={i} size={24} />)}
+        </div>
+      </div>
+      <div style={{ padding: "14px 20px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
+        {[...Array(5)].map((_, i) => (
+          <div key={i} style={{ display: "flex", gap: 10 }}>
+            <SkeletonAvatar size={24} />
+            <div style={{ flex: 1 }}>
+              <SkeletonText height={12} width="80%" />
+              <SkeletonText height={10} width="30%" style={{ marginTop: 4 }} />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 
@@ -285,6 +323,19 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
             style={{ width: "16px", height: "16px", accentColor: "var(--positive)", cursor: "pointer", flexShrink: 0 }} />
           <input value={task.title} onChange={e => save({ title: e.target.value })}
             style={{ flex: 1, border: "none", background: "transparent", fontSize: "16px", fontWeight: 600, color: "var(--text-primary)", outline: "none" }} />
+          <button
+            onClick={async () => {
+              const method = watching ? "DELETE" : "POST";
+              await fetch(`/api/pm/tasks/${taskId}/watch`, { method });
+              setWatching(!watching);
+              setWatcherCount(c => watching ? c - 1 : c + 1);
+            }}
+            title={watching ? `Watching (${watcherCount})` : `Watch · ${watcherCount} watching`}
+            style={{ background: "none", border: `1px solid ${watching ? "var(--accent)" : "var(--border)"}`, borderRadius: "6px", cursor: "pointer", color: watching ? "var(--accent)" : "var(--text-muted)", fontSize: "12px", padding: "3px 8px", display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}
+          >
+            <span style={{ fontSize: "14px" }}>{watching ? "👁" : "👁‍🗨"}</span>
+            <span>{watching ? "Watching" : "Watch"}</span>
+          </button>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "20px", lineHeight: 1, padding: "0 2px" }}>×</button>
         </div>
 
@@ -294,7 +345,24 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
             <div>{fieldLabel("Status")}<StatusSelect value={task.status} onChange={v => save({ status: v })} /></div>
             <div>{fieldLabel("Priority")}<PrioritySelect value={task.priority} onChange={v => save({ priority: v })} /></div>
             <div>{fieldLabel("Start date")}{dateInput(task.startDate, v => save({ startDate: v }))}</div>
-            <div>{fieldLabel("Due date")}{dateInput(task.dueDate, v => save({ dueDate: v }))}</div>
+            <div>
+              {fieldLabel("Due date")}
+              <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                {dateInput(task.dueDate, v => save({ dueDate: v }))}
+                <input
+                  type="time"
+                  value={task.dueTime ?? ""}
+                  onChange={e => save({ dueTime: e.target.value || null })}
+                  title="Due time (optional)"
+                  style={{ padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", cursor: "pointer" }}
+                />
+              </div>
+              {task.dueDate && task.dueTime && (
+                <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px" }}>
+                  {new Date(`${task.dueDate}T${task.dueTime}`).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Assignees */}
@@ -414,6 +482,45 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                   </div>
                   <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>{Math.round((task.actualMinutes / task.estimatedMinutes) * 100)}%</div>
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* Repeat */}
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
+            {fieldLabel("Repeat")}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <select
+                value={recurrence?.frequency ?? ""}
+                onChange={async e => {
+                  const freq = e.target.value;
+                  if (!freq) {
+                    await fetch(`/api/pm/tasks/${taskId}/recurrence`, { method: "DELETE" });
+                    setRecurrence(null);
+                  } else {
+                    const nextDueDate = task?.dueDate ?? new Date().toISOString().slice(0, 10);
+                    const res = await fetch(`/api/pm/tasks/${taskId}/recurrence`, {
+                      method: "POST", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ frequency: freq, nextDueDate }),
+                    });
+                    const d = await res.json() as { recurrence?: { frequency: string; nextDueDate: string } };
+                    setRecurrence(d.recurrence ?? null);
+                  }
+                  setShowRepeatPicker(false);
+                }}
+                style={{ padding: "4px 8px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)" }}
+              >
+                <option value="">Does not repeat</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Biweekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+              </select>
+              {recurrence && (
+                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                  Next: {recurrence.nextDueDate}
+                </span>
               )}
             </div>
           </div>

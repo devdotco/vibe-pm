@@ -46,7 +46,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
     await fetch(`/api/pm/projects/${projectId}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
   };
 
-  const TABS = ["general", "members", "messaging", "integrations", "automations"];
+  const TABS = ["general", "members", "messaging", "integrations", "automations", "import"];
 
   if (!project) return <div style={{ padding: "32px", color: "var(--text-muted)" }}>Loading...</div>;
 
@@ -237,6 +237,10 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
 
       {tab === "members" && (
         <MembersTab projectId={projectId} />
+      )}
+
+      {tab === "import" && (
+        <ImportTab projectId={projectId} />
       )}
     </div>
   );
@@ -742,6 +746,123 @@ function NewAutomationModal({ projectId, onClose, onCreated }: { projectId: stri
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+// ── Import Tab ────────────────────────────────────────────────────────────────
+
+function ImportTab({ projectId }: { projectId: string }) {
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<{ imported: number; errors: Array<{ row: number; reason: string }> } | null>(null);
+  const [error, setError] = useState("");
+  const inputRef = useState<HTMLInputElement | null>(null);
+
+  const upload = async (file: File) => {
+    if (!file.name.endsWith('.csv')) { setError('Please upload a .csv file'); return; }
+    setUploading(true); setError(""); setResult(null);
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      const res = await fetch(`/api/pm/projects/${projectId}/import`, { method: 'POST', body: form });
+      const d = await res.json();
+      if (!res.ok) { setError(d.error ?? 'Import failed'); return; }
+      setResult(d);
+    } catch {
+      setError('Network error — please try again');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) upload(file);
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) upload(file);
+    e.target.value = '';
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>Import tasks from CSV</div>
+          <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
+            Upload a CSV file to bulk-create tasks. Columns: title, description, assignee_email, due_date, priority, status, labels, section_name, estimated_minutes
+          </div>
+        </div>
+        <a
+          href={`/api/pm/projects/${projectId}/import`}
+          download
+          style={{ padding: '6px 14px', fontSize: '13px', background: 'none', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-secondary)', textDecoration: 'none', whiteSpace: 'nowrap' }}
+        >
+          Download template
+        </a>
+      </div>
+
+      {/* Dropzone */}
+      <div
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        onClick={() => document.getElementById('csv-import-input')?.click()}
+        style={{
+          border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`,
+          borderRadius: '10px', padding: '40px 20px', textAlign: 'center', cursor: 'pointer',
+          background: dragging ? 'var(--accent-subtle, #eff6ff)' : 'var(--bg)',
+          transition: 'all 0.15s',
+        }}
+      >
+        <input id="csv-import-input" type="file" accept=".csv" style={{ display: 'none' }} onChange={onFileChange} />
+        {uploading ? (
+          <div style={{ color: 'var(--text-muted)', fontSize: '14px' }}>
+            <div style={{ fontSize: '24px', marginBottom: '8px' }}>⏳</div>
+            Importing tasks…
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: '32px', marginBottom: '10px' }}>📁</div>
+            <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>
+              Drop a CSV here, or click to browse
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Supports .csv files up to 10MB</div>
+          </>
+        )}
+      </div>
+
+      {error && (
+        <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '13px', color: '#dc2626' }}>
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div>
+          <div style={{ padding: '12px 16px', background: 'var(--positive-subtle, #f0fdf4)', border: '1px solid #bbf7d0', borderRadius: '8px', fontSize: '14px', color: '#15803d', marginBottom: result.errors.length > 0 ? '12px' : '0' }}>
+            ✓ {result.imported} task{result.imported !== 1 ? 's' : ''} imported successfully
+            {result.errors.length > 0 && ` · ${result.errors.length} row${result.errors.length !== 1 ? 's' : ''} skipped`}
+          </div>
+          {result.errors.length > 0 && (
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Skipped rows</div>
+              <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                {result.errors.map((e, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '16px', padding: '8px 12px', borderBottom: i < result.errors.length - 1 ? '1px solid var(--border)' : 'none', fontSize: '13px' }}>
+                    <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>Row {e.row}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{e.reason}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

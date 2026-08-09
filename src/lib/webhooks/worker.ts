@@ -1,9 +1,14 @@
 import { db } from "@/lib/db";
 import { webhookOutbox } from "@/lib/db/schema";
-import { eq, and, lt } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import crypto from "crypto";
 
 const INTER_SERVICE_SECRET = process.env.INTER_SERVICE_SECRET ?? "";
 const MAX_ATTEMPTS = 5;
+
+function signPayload(payload: string, secret: string): string {
+  return "sha256=" + crypto.createHmac("sha256", secret).update(payload).digest("hex");
+}
 
 export async function processWebhookOutbox(): Promise<{ processed: number; failed: number }> {
   const pending = await db
@@ -17,13 +22,16 @@ export async function processWebhookOutbox(): Promise<{ processed: number; faile
 
   for (const row of pending) {
     try {
+      const body = JSON.stringify(row.payload);
+      const signature = signPayload(body, INTER_SERVICE_SECRET);
       const res = await fetch(row.targetUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${INTER_SERVICE_SECRET}`,
+          "X-Vibe-Signature": signature,
         },
-        body: JSON.stringify(row.payload),
+        body,
         signal: AbortSignal.timeout(10000),
       });
 

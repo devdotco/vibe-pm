@@ -7,6 +7,7 @@ import {
   doublePrecision,
   timestamp,
   date,
+  time,
   jsonb,
   uniqueIndex,
   index,
@@ -138,6 +139,7 @@ export const tasks = pgTable(
     priority: text("priority").default("none").notNull(),
     assigneeId: uuid("assignee_id"),
     dueDate: date("due_date"),
+    dueTime: time("due_time"),
     startDate: date("start_date"),
     position: doublePrecision("position").default(0).notNull(),
     parentTaskId: uuid("parent_task_id"),
@@ -395,6 +397,49 @@ export const sessions = pgTable("sessions", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// ── Task Watchers ─────────────────────────────────────────────────────────────
+
+export const taskWatchers = pgTable(
+  "task_watchers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    orgId: text("org_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("task_watchers_task_user_idx").on(t.taskId, t.userId),
+    index("task_watchers_user_idx").on(t.userId, t.orgId),
+  ]
+);
+
+// ── Task Recurrence ───────────────────────────────────────────────────────────
+
+export const taskRecurrence = pgTable(
+  "task_recurrence",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    taskId: uuid("task_id")
+      .notNull()
+      .unique()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    orgId: text("org_id").notNull(),
+    frequency: text("frequency").notNull(), // 'daily'|'weekly'|'biweekly'|'monthly'|'quarterly'
+    interval: integer("interval").default(1).notNull(),
+    daysOfWeek: integer("days_of_week").array(),
+    dayOfMonth: integer("day_of_month"),
+    endDate: date("end_date"),
+    maxOccurrences: integer("max_occurrences"),
+    nextDueDate: date("next_due_date").notNull(),
+    occurrenceCount: integer("occurrence_count").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("task_recurrence_next_due_idx").on(t.nextDueDate)]
+);
+
 // ── Relations ─────────────────────────────────────────────────────────────────
 
 export const teamsRelations = relations(teams, ({ many }) => ({
@@ -446,3 +491,5 @@ export type Automation = typeof automations.$inferSelect;
 export type PmNotification = typeof pmNotifications.$inferSelect;
 export type WebhookOutboxRow = typeof webhookOutbox.$inferSelect;
 export type ProjectChannelLink = typeof projectChannelLinks.$inferSelect;
+export type TaskWatcher = typeof taskWatchers.$inferSelect;
+export type TaskRecurrenceRow = typeof taskRecurrence.$inferSelect;

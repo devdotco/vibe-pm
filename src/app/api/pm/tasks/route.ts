@@ -9,6 +9,9 @@ import { pusherServer, projectChannel } from '@/lib/pusher/server';
 import { positionBetween } from '@/lib/ordering';
 import { eq, and, isNull, asc, desc } from 'drizzle-orm';
 import { sendTaskAssignedEmail } from '@/lib/email/notifications';
+import { validate, CreateTaskSchema } from '@/lib/validate';
+import { rateLimit } from '@/lib/rate-limit';
+import { autoWatch } from '@/lib/watchers';
 
 export async function GET(req: NextRequest) {
   const user = await requireUser();
@@ -22,9 +25,13 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const user = await requireUser();
+  if (!rateLimit(`tasks:${user.id}`, 60, 60_000)) {
+    return NextResponse.json({ error: 'Too many requests. Slow down.' }, { status: 429 });
+  }
   const body = await req.json();
-  const { projectId, sectionId, title, description, priority, assigneeId, dueDate, startDate, labels, parentTaskId } = body;
-  if (!projectId || !title) return NextResponse.json({ error: 'projectId and title required' }, { status: 400 });
+  const v = validate(CreateTaskSchema, body);
+  if (!v.success) return v.response;
+  const { projectId, sectionId, title, description, priority, assigneeId, dueDate, dueTime, startDate, labels, parentTaskId, estimatedMinutes } = v.data;
 
   // get last position in section
   const existing = await db.select({ position: tasks.position }).from(tasks)
@@ -35,10 +42,14 @@ export async function POST(req: NextRequest) {
   const [task] = await db.transaction(async (tx) => {
     const [task] = await tx.insert(tasks).values({
       projectId, sectionId, orgId: user.orgId, title, description,
-      priority: priority ?? 'none', assigneeId, dueDate, startDate,
-      labels: labels ?? [], parentTaskId, position, createdBy: user.id,
+      priority: priority ?? 'none', assigneeId, dueDate, dueTime, startDate,
+      labels: labels ?? [], parentTaskId, estimatedMinutes, position, createdBy: user.id,
     }).returning();
     await logActivity({ taskId: task.id, projectId, orgId: user.orgId, userId: user.id, action: 'created' }, tx);
+    // auto-watch: creator
+    await autoWatch(task.id, user.orgId, user.id, tx);
+    // auto-watch: assignee (if set)
+    if (assigneeId && assigneeId !== user.id) await autoWatch(task.id, user.orgId, assigneeId, tx);
     return [task];
   });
 

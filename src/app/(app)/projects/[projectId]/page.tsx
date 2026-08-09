@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, use } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ProjectListView } from "@/components/pm/project/ProjectListView";
-import { KanbanBoard } from "@/components/pm/board/KanbanBoard";
+import { KanbanBoard, KanbanBoardSkeleton } from "@/components/pm/board/KanbanBoard";
 import { TaskDetailPanel } from "@/components/pm/task/TaskDetailPanel";
 import PusherClient from "pusher-js";
 
@@ -76,7 +76,20 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
     router.push(`?view=${v}`, { scroll: false });
   };
 
-  if (!project) return <div style={{ padding: "32px", color: "var(--text-muted)" }}>Loading...</div>;
+  if (!project) return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <div style={{ padding: "16px 24px 0", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+          <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "var(--panel-hover)", animation: "skeleton-pulse 1.5s infinite" }} />
+          <div style={{ width: "160px", height: "18px", borderRadius: "4px", background: "var(--panel-hover)", animation: "skeleton-pulse 1.5s infinite" }} />
+        </div>
+        <div style={{ display: "flex", gap: "4px" }}>
+          {[...Array(5)].map((_, i) => <div key={i} style={{ width: "70px", height: "28px", borderRadius: "4px", background: "var(--panel-hover)", animation: "skeleton-pulse 1.5s infinite" }} />)}
+        </div>
+      </div>
+      <KanbanBoardSkeleton />
+    </div>
+  );
 
   const VIEWS = ["list", "board", "calendar", "timeline", "milestones"];
 
