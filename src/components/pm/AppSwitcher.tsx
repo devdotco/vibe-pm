@@ -7,6 +7,8 @@ const MESSAGING_URL =
   process.env.NEXT_PUBLIC_MESSAGING_URL ?? "https://chat.vb.co";
 const FINANCE_URL =
   process.env.NEXT_PUBLIC_FINANCE_URL ?? "https://finance.vb.co";
+const CRM_URL =
+  process.env.NEXT_PUBLIC_CRM_URL ?? "https://crm.vb.co";
 const MARKETING_URL =
   process.env.NEXT_PUBLIC_MARKETING_URL ?? "https://marketing.vb.co";
 const SHELL_URL =
@@ -163,6 +165,11 @@ export function AppSwitcher() {
       {/* Finance */}
       <AppIcon href={FINANCE_URL} title="ViBe Finance" external>
         $
+      </AppIcon>
+
+      {/* CRM */}
+      <AppIcon href={CRM_URL} title="ViBe CRM" external>
+        👥
       </AppIcon>
 
       {/* Marketing */}
