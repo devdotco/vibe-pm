@@ -67,8 +67,8 @@ export default async function SignInPage({
         </p>
 
         <a
-          href={`https://app.vb.co/sign-in?next=${encodeURIComponent(
-            `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${next ?? "/"}`
+          href={`https://finance.vb.co/sign-in?next=${encodeURIComponent(
+            `${process.env.NEXT_PUBLIC_APP_URL ?? "https://pm.vb.co"}${next ?? "/"}`
           )}`}
           style={{
             display: "block",

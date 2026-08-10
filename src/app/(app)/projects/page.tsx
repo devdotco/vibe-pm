@@ -222,11 +222,16 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     fetch("/api/pm/projects")
-      .then((r) => r.json())
-      .then((d: { projects: Project[] }) => {
+      .then((r) => {
+        if (r.status === 401) { window.location.href = '/sign-in'; return null; }
+        return r.json();
+      })
+      .then((d: { projects: Project[] } | null) => {
+        if (!d) return;
         setProjects(d.projects ?? []);
         setLoading(false);
-      });
+      })
+      .catch(() => setLoading(false));
   }, []);
 
   const filtered =
