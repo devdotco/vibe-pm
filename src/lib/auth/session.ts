@@ -5,7 +5,9 @@ import { eq } from "drizzle-orm";
 import crypto from "crypto";
 
 const COOKIE_NAME = "__vibe_session";
-const MESSAGING_URL = process.env.MESSAGING_MODULE_URL ?? "https://chat.vb.co";
+// finance.vb.co is the canonical ViBe auth source — it issues __vibe_session
+// and exposes /api/auth/me for cross-app session validation.
+const AUTH_URL = process.env.AUTH_URL ?? "https://finance.vb.co";
 
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -16,7 +18,7 @@ export async function getCurrentUser() {
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
 
-  // 1. Try local DB first
+  // 1. Local sessions table — fast path, covers repeat visits.
   const [row] = await db
     .select({ user: users })
     .from(sessions)
@@ -24,11 +26,12 @@ export async function getCurrentUser() {
     .where(eq(sessions.tokenHash, hashToken(token)))
     .limit(1);
 
-  if (row && row.user.status === "active") return row.user;
+  if (row?.user.status === "active") return row.user;
 
-  // 2. Fall back: validate against messaging app (cross-app SSO)
+  // 2. Cross-app SSO: validate against finance.vb.co (the canonical auth source).
+  //    Session was created there; our local DB has no record until we upsert below.
   try {
-    const res = await fetch(`${MESSAGING_URL}/api/messaging/users/me`, {
+    const res = await fetch(`${AUTH_URL}/api/auth/me`, {
       headers: { cookie: `${COOKIE_NAME}=${token}` },
       cache: "no-store",
     });
@@ -36,7 +39,7 @@ export async function getCurrentUser() {
     const data = await res.json() as { id: string; email: string; name: string; orgId: string; status: string };
     if (!data?.id || data.status !== "active") return null;
 
-    // Upsert user locally so future requests hit local DB
+    // Upsert user so future requests hit local DB.
     const existing = await db.select().from(users).where(eq(users.email, data.email)).limit(1);
     let localUser = existing[0];
     if (!localUser) {
@@ -49,12 +52,11 @@ export async function getCurrentUser() {
       }).onConflictDoNothing().returning();
     }
     if (!localUser) {
-      // id conflict — fetch by id
-      [localUser] = await db.select().from(users).where(eq(users.id, data.id)).limit(1);
+      [localUser] = await db.select().from(users).where(eq(users.email, data.email)).limit(1);
     }
     if (!localUser) return null;
 
-    // Create local session so next request is fast
+    // Cache session so next request is fast.
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await db.insert(sessions).values({
       userId: localUser.id,
