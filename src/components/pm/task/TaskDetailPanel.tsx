@@ -66,7 +66,7 @@ const ACTION_LABELS: Record<string, (a: { oldValue?: string | null; newValue?: s
 };
 
 function Avatar({ name, size = 24 }: { name: string; size?: number }) {
-  const colors = ["#4f46e5", "#0d8f80", "#0f7a52", "#a6620a", "#6d4be0"];
+  const colors = ["#2f5cff", "#0d8f80", "#0f7a52", "#a6620a", "#6d4be0"];
   const color = colors[name.charCodeAt(0) % colors.length]!;
   return (
     <div title={name} style={{ width: size, height: size, borderRadius: "50%", background: color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.42, fontWeight: 600, color: "white", flexShrink: 0 }}>

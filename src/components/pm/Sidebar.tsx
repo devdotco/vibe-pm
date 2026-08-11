@@ -3,6 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useCallback, useRef } from "react";
+import {
+  Home,
+  Inbox,
+  CheckSquare,
+  FolderKanban,
+  LayoutGrid,
+  Users,
+  Settings,
+  LogOut,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  X,
+} from "lucide-react";
 import type { User } from "@/lib/db/schema";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -52,7 +66,7 @@ function NavItem({
   exact,
 }: {
   href: string;
-  icon: string;
+  icon: React.ReactNode;
   label: string;
   badge?: number;
   exact?: boolean;
@@ -86,7 +100,7 @@ function NavItem({
           (e.currentTarget as HTMLAnchorElement).style.background = "transparent";
       }}
     >
-      <span style={{ fontSize: "14px", width: "17px", textAlign: "center", flexShrink: 0 }}>
+      <span style={{ width: "17px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
         {icon}
       </span>
       <span style={{ flex: 1 }}>{label}</span>
@@ -123,7 +137,7 @@ function ProjectLink({ project }: { project: Project }) {
         padding: "5px 10px 5px 18px",
         borderRadius: "6px",
         color: active ? "white" : "var(--sidebar-text, rgba(193,196,207,0.85))",
-        background: active ? "rgba(79,70,229,0.3)" : "transparent",
+        background: active ? "rgba(47,92,255,0.3)" : "transparent",
         textDecoration: "none",
         fontSize: "13px",
         fontWeight: active ? 500 : 400,
@@ -510,13 +524,14 @@ function WorkspaceSection({
             cursor: "pointer",
             padding: "2px 4px",
             color: "rgba(255,255,255,0.35)",
-            fontSize: "10px",
+            display: "flex",
+            alignItems: "center",
             transition: "transform 0.1s",
             transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
             flexShrink: 0,
           }}
         >
-          ▾
+          <ChevronDown size={12} />
         </button>
         <Link
           href="/workspaces"
@@ -544,8 +559,8 @@ function WorkspaceSection({
             border: "none",
             cursor: "pointer",
             color: "rgba(255,255,255,0.35)",
-            fontSize: "16px",
-            lineHeight: 1,
+            display: "flex",
+            alignItems: "center",
             padding: "0 2px",
             flexShrink: 0,
           }}
@@ -558,7 +573,7 @@ function WorkspaceSection({
               "rgba(255,255,255,0.35)";
           }}
         >
-          +
+          <Plus size={14} />
         </button>
       </div>
 
@@ -676,13 +691,13 @@ function GlobalSettingsModal({ onClose }: { onClose: () => void }) {
               background: "none",
               border: "none",
               cursor: "pointer",
-              fontSize: "18px",
               color: "var(--text-muted)",
-              padding: "0 2px",
-              lineHeight: 1,
+              padding: "2px",
+              display: "flex",
+              alignItems: "center",
             }}
           >
-            ×
+            <X size={16} />
           </button>
         </div>
 
@@ -910,27 +925,20 @@ export function Sidebar({ user }: SidebarProps) {
           gap: "8px",
         }}
       >
-        <span
-          style={{
-            fontWeight: 700,
-            color: "white",
-            fontSize: "14px",
-            flex: 1,
-            letterSpacing: "-0.2px",
-          }}
-        >
-          ViBe PM
-        </span>
+        <svg width="68" height="18" viewBox="0 0 68 18" fill="none">
+          <text x="0" y="14" fontFamily="var(--font-geist-sans), system-ui, sans-serif" fontWeight="800" fontSize="14" fill="var(--accent)">ViBe</text>
+          <text x="46" y="14" fontFamily="var(--font-geist-sans), system-ui, sans-serif" fontWeight="600" fontSize="13" fill="rgba(255,255,255,0.55)">PM</text>
+        </svg>
       </div>
 
       {/* Primary navigation */}
       <nav style={{ padding: "6px 8px" }}>
-        <NavItem href="/home" icon="⌂" label="Home" exact />
-        <NavItem href="/inbox" icon="◻" label="Inbox" badge={unreadCount} />
-        <NavItem href="/my-tasks" icon="✓" label="My Tasks" />
-        <NavItem href="/projects" icon="◈" label="Projects" exact />
-        <NavItem href="/portfolios" icon="▦" label="Portfolios" />
-        <NavItem href="/admin/users" icon="👥" label="Members" />
+        <NavItem href="/home" icon={<Home size={15} />} label="Home" exact />
+        <NavItem href="/inbox" icon={<Inbox size={15} />} label="Inbox" badge={unreadCount} />
+        <NavItem href="/my-tasks" icon={<CheckSquare size={15} />} label="My Tasks" />
+        <NavItem href="/projects" icon={<FolderKanban size={15} />} label="Projects" exact />
+        <NavItem href="/portfolios" icon={<LayoutGrid size={15} />} label="Portfolios" />
+        <NavItem href="/admin/users" icon={<Users size={15} />} label="Members" />
       </nav>
 
       {/* Divider */}
@@ -972,8 +980,8 @@ export function Sidebar({ user }: SidebarProps) {
               border: "none",
               cursor: "pointer",
               color: "rgba(255,255,255,0.35)",
-              fontSize: "16px",
-              lineHeight: 1,
+              display: "flex",
+              alignItems: "center",
               padding: "0 2px",
             }}
             onMouseEnter={(e) => {
@@ -985,7 +993,7 @@ export function Sidebar({ user }: SidebarProps) {
                 "rgba(255,255,255,0.35)";
             }}
           >
-            +
+            <Plus size={14} />
           </button>
         </div>
 
@@ -1053,7 +1061,7 @@ export function Sidebar({ user }: SidebarProps) {
               "rgba(255,255,255,0.35)";
           }}
         >
-          <span style={{ fontSize: "14px" }}>+</span>
+          <Plus size={14} />
           Add project
         </button>
       </div>
@@ -1107,7 +1115,7 @@ export function Sidebar({ user }: SidebarProps) {
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.06)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
             >
-              <span style={{ fontSize: "13px" }}>⚙</span>
+              <Settings size={14} />
               Settings
             </button>
             <div style={{ height: "1px", background: "var(--border)", margin: "0 8px" }} />
@@ -1127,7 +1135,7 @@ export function Sidebar({ user }: SidebarProps) {
               onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.06)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "none"; }}
             >
-              <span style={{ fontSize: "12px" }}>↪</span>
+              <LogOut size={14} />
               Log out
             </a>
           </div>
@@ -1192,8 +1200,8 @@ export function Sidebar({ user }: SidebarProps) {
               {user.email}
             </div>
           </div>
-          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", flexShrink: 0 }}>
-            {showUserMenu ? "▾" : "▴"}
+          <span style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0, display: "flex" }}>
+            {showUserMenu ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
           </span>
         </button>
       </div>

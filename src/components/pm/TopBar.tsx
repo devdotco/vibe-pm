@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
+import { Search, Plus } from "lucide-react";
 import type { User } from "@/lib/db/schema";
 
 interface TopBarProps {
@@ -81,7 +82,7 @@ export function TopBar({ user }: TopBarProps) {
           minWidth: "180px",
         }}
       >
-        <span>🔍</span>
+        <Search size={14} />
         <span>Search</span>
         <span
           style={{
@@ -114,7 +115,7 @@ export function TopBar({ user }: TopBarProps) {
           gap: "6px",
         }}
       >
-        <span style={{ fontSize: "16px", lineHeight: 1 }}>+</span>
+        <Plus size={15} />
         New Task
       </button>
 

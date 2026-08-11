@@ -35,7 +35,7 @@ const GRID_COLS = "8px 22px 16px 1fr 90px 100px 140px 130px 28px";
 function hashColor(str: string): string {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
-  const colors = ["#4f46e5", "#0d8f80", "#0f7a52", "#a6620a", "#bf2434", "#6d4be0", "#0891b2", "#059669"];
+  const colors = ["#2f5cff", "#0d8f80", "#0f7a52", "#a6620a", "#bf2434", "#6d4be0", "#0891b2", "#059669"];
   return colors[Math.abs(h) % colors.length]!;
 }
 
@@ -236,7 +236,7 @@ function TaskItem({
         {/* Blue dot */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
           {isNew && !done && (
-            <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#4f46e5" }} />
+            <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#2f5cff" }} />
           )}
         </div>
 

@@ -24,7 +24,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 function Avatar({ name, avatarUrl, size = 24 }: { name: string; avatarUrl?: string | null; size?: number }) {
-  const colors = ['#4f46e5', '#0d8f80', '#a6620a', '#6d4be0', '#0f7a52'];
+  const colors = ['#2f5cff', '#0d8f80', '#a6620a', '#6d4be0', '#0f7a52'];
   const bg = colors[name.charCodeAt(0) % colors.length]!;
   if (avatarUrl) {
     return <img src={avatarUrl} alt={name} title={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />;

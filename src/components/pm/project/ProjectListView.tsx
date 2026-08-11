@@ -56,7 +56,7 @@ function avatarInitials(a: Assignee): string {
 function hashColor(str: string): string {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
-  const colors = ["#4f46e5", "#0891b2", "#059669", "#d97706", "#7c3aed", "#db2777", "#0284c7", "#16a34a"];
+  const colors = ["#2f5cff", "#0891b2", "#059669", "#d97706", "#7c3aed", "#db2777", "#0284c7", "#16a34a"];
   return colors[Math.abs(h) % colors.length]!;
 }
 
@@ -683,7 +683,7 @@ function TaskRow({
             />
           ) : (
             showDot && !done && (
-              <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#4f46e5" }} />
+              <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#2f5cff" }} />
             )
           )}
         </div>

@@ -94,7 +94,7 @@ export async function sendTaskAssignedEmail(data: TaskNotificationData) {
       <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px">
         <strong style="font-size:16px">${data.taskTitle}</strong>
       </div>
-      <a href="${url}" style="display:inline-block;background:#4f46e5;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
+      <a href="${url}" style="display:inline-block;background:#2f5cff;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
       <p style="color:#9ca3af;font-size:12px;margin-top:24px">Reply to this email to leave a comment on the task without logging in.</p>
     </div>`,
     replyTo
@@ -114,7 +114,7 @@ export async function sendTaskMentionEmail(data: TaskNotificationData) {
         <strong style="font-size:16px;display:block;margin-bottom:8px">${data.taskTitle}</strong>
         ${data.commentText ? `<p style="color:#374151;margin:0">${data.commentText}</p>` : ''}
       </div>
-      <a href="${url}" style="display:inline-block;background:#4f46e5;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
+      <a href="${url}" style="display:inline-block;background:#2f5cff;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
       <p style="color:#9ca3af;font-size:12px;margin-top:24px">Reply to this email to respond without logging in.</p>
     </div>`,
     replyTo
@@ -132,9 +132,9 @@ export async function sendTaskCommentEmail(data: TaskNotificationData) {
       <p style="color:#666;margin-bottom:16px">${data.actorName} commented on a task in <strong>${data.projectName}</strong>:</p>
       <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px">
         <strong style="font-size:16px;display:block;margin-bottom:8px">${data.taskTitle}</strong>
-        ${data.commentText ? `<blockquote style="border-left:3px solid #4f46e5;padding-left:12px;color:#374151;margin:0">${data.commentText}</blockquote>` : ''}
+        ${data.commentText ? `<blockquote style="border-left:3px solid #2f5cff;padding-left:12px;color:#374151;margin:0">${data.commentText}</blockquote>` : ''}
       </div>
-      <a href="${url}" style="display:inline-block;background:#4f46e5;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
+      <a href="${url}" style="display:inline-block;background:#2f5cff;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
       <p style="color:#9ca3af;font-size:12px;margin-top:24px">Reply to this email to respond without logging in.</p>
     </div>`,
     replyTo

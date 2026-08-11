@@ -2,6 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  CheckSquare,
+  MessageSquare,
+  DollarSign,
+  Users,
+  Zap,
+  Home,
+  Bell,
+} from "lucide-react";
 
 const MESSAGING_URL =
   process.env.NEXT_PUBLIC_MESSAGING_URL ?? "https://chat.vb.co";
@@ -131,15 +140,15 @@ export function AppSwitcher() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: "15px",
-          fontWeight: 700,
-          color: "white",
-          marginBottom: "8px",
           flexShrink: 0,
+          marginBottom: "8px",
+          overflow: "hidden",
         }}
         title="ViBe"
       >
-        V
+        <svg width="22" height="16" viewBox="0 0 22 16" fill="none">
+          <text x="0" y="13" fontFamily="var(--font-geist-sans), system-ui, sans-serif" fontWeight="800" fontSize="13" fill="white">V</text>
+        </svg>
       </div>
 
       {/* Divider */}
@@ -154,32 +163,32 @@ export function AppSwitcher() {
 
       {/* PM */}
       <AppIcon href="/home" title="ViBe PM" active={isPM}>
-        ✓
+        <CheckSquare size={17} />
       </AppIcon>
 
       {/* Messaging */}
-      <AppIcon href={MESSAGING_URL} title="ViBe Messaging" external>
-        💬
+      <AppIcon href={MESSAGING_URL} title="ViBe Chat" external>
+        <MessageSquare size={17} />
       </AppIcon>
 
       {/* Finance */}
       <AppIcon href={FINANCE_URL} title="ViBe Finance" external>
-        $
+        <DollarSign size={17} />
       </AppIcon>
 
       {/* CRM */}
       <AppIcon href={CRM_URL} title="ViBe CRM" external>
-        👥
+        <Users size={17} />
       </AppIcon>
 
       {/* Marketing */}
       <AppIcon href={MARKETING_URL} title="ViBe Marketing" external>
-        ⚡
+        <Zap size={17} />
       </AppIcon>
 
       {/* App shell */}
       <AppIcon href={SHELL_URL} title="ViBe Home" external>
-        ⌂
+        <Home size={17} />
       </AppIcon>
 
       {/* Spacer */}
@@ -197,7 +206,7 @@ export function AppSwitcher() {
 
       {/* Notifications */}
       <AppIcon href="/inbox" title="Notifications">
-        🔔
+        <Bell size={17} />
       </AppIcon>
     </div>
   );
