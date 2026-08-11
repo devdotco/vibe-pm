@@ -21,7 +21,9 @@ export async function GET() {
     .from(projectMembers)
     .innerJoin(projects, eq(projectMembers.projectId, projects.id))
     .where(and(eq(projectMembers.userId, user.id), eq(projectMembers.orgId, user.orgId), ne(projects.status, 'archived')));
-  return NextResponse.json({ projects: rows.map(r => r.project) });
+  return NextResponse.json({ projects: rows.map(r => r.project) }, {
+    headers: { 'Cache-Control': 'no-store' },
+  });
 }
 
 export async function POST(req: NextRequest) {
