@@ -8,14 +8,19 @@ import ReactMarkdown from "react-markdown";
 import { formatDistanceToNow, parseISO } from "date-fns";
 
 function renderWithMentions(text: string) {
-  const parts = text.split(/(@\w+)/g);
+  const parts = text.split(/(@\w+|https?:\/\/[^\s<>"']+|www\.[^\s<>"']+|[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.(?:com|org|net|io|co|gov|edu|app|dev|ai|tech|info|me|us|uk|au|ca|de|fr|jp|cn|br|in|ru|nl)(?:\/[^\s<>"']*)?)/gi);
   return (
     <>
-      {parts.map((part, i) =>
-        /^@\w+$/.test(part)
-          ? <strong key={i} style={{ color: "var(--accent)" }}>{part}</strong>
-          : part
-      )}
+      {parts.map((part, i) => {
+        if (/^@\w+$/.test(part)) {
+          return <strong key={i} style={{ color: "var(--accent)" }}>{part}</strong>;
+        }
+        if (/^(?:https?:\/\/|www\.)/i.test(part) || /^[a-zA-Z0-9].*\.(?:com|org|net|io|co|gov|edu|app|dev|ai|tech|info|me|us|uk|au|ca|de|fr|jp|cn|br|in|ru|nl)/i.test(part)) {
+          const href = /^https?:\/\//i.test(part) ? part : `https://${part}`;
+          return <a key={i} href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "underline" }}>{part}</a>;
+        }
+        return part;
+      })}
     </>
   );
 }
