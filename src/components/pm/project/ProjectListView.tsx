@@ -25,7 +25,7 @@ interface ProjectListViewProps {
 type SortField = "position" | "dueDate" | "priority" | "title" | "createdAt";
 type GroupBy = "section" | "assignee" | "priority" | "status";
 interface ColVis { dueDate: boolean; collaborators: boolean; projects: boolean; visibility: boolean; }
-interface Filters { priorities: string[]; dueDates: string[]; }
+interface Filters { priorities: string[]; dueDates: string[]; hiddenSections: string[]; }
 interface TaskGroup { key: string; label: string; tasks: Task[]; sectionId?: string; }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -229,25 +229,73 @@ const DUEDATE_OPTIONS = [
   { value: "no_date", label: "No date" },
 ];
 
-function FilterPanel({ filters, onFilters, onClose }: {
-  filters: Filters; onFilters: (f: Filters) => void; onClose: () => void;
+const ALL_SECTION_NAMES = ["Backlog", "To Do", "In Progress", "In Review", "Done"];
+
+function FilterPanel({ filters, sections, onFilters, onClose }: {
+  filters: Filters; sections: Section[]; onFilters: (f: Filters) => void; onClose: () => void;
 }) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
   const togglePriority = (p: string) => {
     const arr = filters.priorities;
     onFilters({ ...filters, priorities: arr.includes(p) ? arr.filter(v => v !== p) : [...arr, p] });
+    setSaved(false);
   };
   const toggleDue = (d: string) => {
     const arr = filters.dueDates;
     onFilters({ ...filters, dueDates: arr.includes(d) ? arr.filter(v => v !== d) : [...arr, d] });
+    setSaved(false);
   };
-  const hasAny = filters.priorities.length > 0 || filters.dueDates.length > 0;
+  const toggleSection = (name: string) => {
+    const arr = filters.hiddenSections;
+    onFilters({ ...filters, hiddenSections: arr.includes(name) ? arr.filter(v => v !== name) : [...arr, name] });
+    setSaved(false);
+  };
+  const hasAny = filters.priorities.length > 0 || filters.dueDates.length > 0 || filters.hiddenSections.length > 0;
+
+  // Section names to show: prefer project's actual sections, fall back to standard list
+  const sectionNames = sections.length > 0
+    ? [...new Set([...sections.map(s => s.name), ...ALL_SECTION_NAMES])]
+    : ALL_SECTION_NAMES;
+
+  const saveDefaults = async () => {
+    setSaving(true);
+    await fetch("/api/pm/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hiddenSections: filters.hiddenSections }),
+    });
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
 
   return (
     <div style={{
-      padding: "10px 16px", background: "var(--bg-elevated)",
+      padding: "12px 16px", background: "var(--bg-elevated)",
       borderBottom: "1px solid var(--border)",
-      display: "flex", gap: "20px", alignItems: "flex-start", flexWrap: "wrap",
+      display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap",
     }}>
+      {/* Sections */}
+      <div>
+        <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>Hide sections</div>
+        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+          {sectionNames.map(name => {
+            const hidden = filters.hiddenSections.includes(name);
+            return (
+              <button key={name} onClick={() => toggleSection(name)} style={{
+                padding: "2px 8px", borderRadius: "10px", fontSize: "11px", cursor: "pointer",
+                border: `1px solid ${hidden ? "var(--accent)" : "var(--border)"}`,
+                background: hidden ? "var(--accent-subtle, rgba(47,92,255,0.08))" : "transparent",
+                color: hidden ? "var(--accent)" : "var(--text-secondary)",
+              }}>{name}</button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Priority */}
       <div>
         <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>Priority</div>
         <div style={{ display: "flex", gap: "4px" }}>
@@ -261,6 +309,8 @@ function FilterPanel({ filters, onFilters, onClose }: {
           ))}
         </div>
       </div>
+
+      {/* Due date */}
       <div>
         <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>Due date</div>
         <div style={{ display: "flex", gap: "4px" }}>
@@ -274,14 +324,35 @@ function FilterPanel({ filters, onFilters, onClose }: {
           ))}
         </div>
       </div>
-      {hasAny && (
-        <button onClick={() => onFilters({ priorities: [], dueDates: [] })} style={{
-          alignSelf: "flex-end", padding: "2px 8px", fontSize: "12px",
-          background: "none", border: "1px solid var(--border)", borderRadius: "4px",
-          cursor: "pointer", color: "var(--text-muted)",
-        }}>Clear all</button>
-      )}
-      <button onClick={onClose} style={{ marginLeft: "auto", alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", fontSize: "16px", color: "var(--text-muted)", padding: "0" }}>×</button>
+
+      {/* Actions */}
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "flex-start", gap: "6px" }}>
+        {filters.hiddenSections.length > 0 && (
+          <button
+            onClick={saveDefaults}
+            disabled={saving}
+            title="Save section visibility as your default for all projects"
+            style={{
+              alignSelf: "flex-start", padding: "2px 10px", fontSize: "11px",
+              background: saved ? "#0f7a5222" : "var(--accent-subtle, rgba(47,92,255,0.08))",
+              border: `1px solid ${saved ? "#0f7a52" : "var(--accent)"}`,
+              borderRadius: "4px", cursor: "pointer",
+              color: saved ? "#0f7a52" : "var(--accent)", fontWeight: 500,
+              opacity: saving ? 0.6 : 1,
+            }}
+          >
+            {saved ? "✓ Saved" : saving ? "Saving…" : "Save as default"}
+          </button>
+        )}
+        {hasAny && (
+          <button onClick={() => { onFilters({ priorities: [], dueDates: [], hiddenSections: [] }); setSaved(false); }} style={{
+            alignSelf: "flex-start", padding: "2px 8px", fontSize: "11px",
+            background: "none", border: "1px solid var(--border)", borderRadius: "4px",
+            cursor: "pointer", color: "var(--text-muted)",
+          }}>Clear all</button>
+        )}
+        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "16px", color: "var(--text-muted)", padding: "0" }}>×</button>
+      </div>
     </div>
   );
 }
@@ -290,12 +361,13 @@ function FilterPanel({ filters, onFilters, onClose }: {
 
 function ListToolbar({
   sortField, sortDir, onSort, groupBy, onGroup,
-  cols, onToggleCol, filters, onFilters, onAddTask,
+  cols, onToggleCol, filters, onFilters, sections, onAddTask,
 }: {
   sortField: SortField; sortDir: "asc" | "desc"; onSort: (f: SortField) => void;
   groupBy: GroupBy; onGroup: (g: GroupBy) => void;
   cols: ColVis; onToggleCol: (k: keyof ColVis) => void;
   filters: Filters; onFilters: (f: Filters) => void;
+  sections: Section[];
   onAddTask: () => void;
 }) {
   const [showSort, setShowSort] = useState(false);
@@ -316,7 +388,8 @@ function ListToolbar({
 
   const hasActiveSort = sortField !== "position";
   const hasActiveGroup = groupBy !== "section";
-  const hasActiveFilter = filters.priorities.length > 0 || filters.dueDates.length > 0;
+  const activeFilterCount = filters.priorities.length + filters.dueDates.length + filters.hiddenSections.length;
+  const hasActiveFilter = activeFilterCount > 0;
 
   const tbtn = (active?: boolean): React.CSSProperties => ({
     padding: "5px 10px", fontSize: "12px",
@@ -369,7 +442,7 @@ function ListToolbar({
 
         <div ref={dropRef} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
           <button onClick={() => setShowFilter(f => !f)} style={tbtn(hasActiveFilter || showFilter)}>
-            Filter{hasActiveFilter ? ` (${filters.priorities.length + filters.dueDates.length})` : ""}
+            Filter{hasActiveFilter ? ` (${activeFilterCount})` : ""}
           </button>
 
           <div style={{ position: "relative" }}>
@@ -427,7 +500,7 @@ function ListToolbar({
       </div>
 
       {showFilter && (
-        <FilterPanel filters={filters} onFilters={onFilters} onClose={() => setShowFilter(false)} />
+        <FilterPanel filters={filters} sections={sections} onFilters={onFilters} onClose={() => setShowFilter(false)} />
       )}
     </>
   );
@@ -836,7 +909,7 @@ export function ProjectListView({
   const [sortField, setSortField] = useState<SortField>("position");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [groupBy, setGroupBy] = useState<GroupBy>("section");
-  const [filters, setFilters] = useState<Filters>({ priorities: [], dueDates: [] });
+  const [filters, setFilters] = useState<Filters>({ priorities: [], dueDates: [], hiddenSections: [] });
   const [cols, setCols] = useState<ColVis>({ dueDate: true, collaborators: true, projects: true, visibility: true });
 
   // Section / task management
@@ -875,6 +948,17 @@ export function ProjectListView({
     fetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
   }, []);
 
+  useEffect(() => {
+    fetch("/api/pm/preferences")
+      .then(r => r.json())
+      .then((d: { preferences?: { hiddenSections?: string[] } }) => {
+        const hidden = d.preferences?.hiddenSections ?? [];
+        if (hidden.length > 0) {
+          setFilters(f => ({ ...f, hiddenSections: hidden }));
+        }
+      });
+  }, []);
+
   const toggleSelect = useCallback((id: string) => {
     setSelectedTaskIds(prev => {
       const next = new Set(prev);
@@ -903,7 +987,10 @@ export function ProjectListView({
   const topLevel = tasks.filter(t => !t.parentTaskId);
   const filtered = applyFilters(topLevel, filters);
   const sorted = applySort(filtered, sortField, sortDir);
-  const groups = buildGroups(sorted, groupBy, sections);
+  const allGroups = buildGroups(sorted, groupBy, sections);
+  const groups = filters.hiddenSections.length > 0 && groupBy === "section"
+    ? allGroups.filter(g => !filters.hiddenSections.includes(g.label))
+    : allGroups;
 
   const toggleSort = useCallback((f: SortField) => {
     setSortField(prev => {
@@ -1015,6 +1102,7 @@ export function ProjectListView({
         groupBy={groupBy} onGroup={setGroupBy}
         cols={cols} onToggleCol={toggleCol}
         filters={filters} onFilters={setFilters}
+        sections={sections}
         onAddTask={() => {
           const first = groups[0];
           if (first) { setCollapsed(c => ({ ...c, [first.key]: false })); setAddingInSection(first.key); }

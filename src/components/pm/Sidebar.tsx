@@ -2,8 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import type { User } from "@/lib/db/schema";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface SavedUserPreferences {
+  hiddenSections: string[];
+  hideCompletedProjects: boolean;
+}
+
+const DEFAULT_SECTION_NAMES = ["Backlog", "To Do", "In Progress", "In Review", "Done"];
+const DEFAULT_PREFS: SavedUserPreferences = { hiddenSections: [], hideCompletedProjects: false };
 
 interface Project {
   id: string;
@@ -576,6 +586,230 @@ function WorkspaceSection({
   );
 }
 
+// ── GlobalSettingsModal ────────────────────────────────────────────────────────
+
+function GlobalSettingsModal({ onClose }: { onClose: () => void }) {
+  const [prefs, setPrefs] = useState<SavedUserPreferences>(DEFAULT_PREFS);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/pm/preferences")
+      .then((r) => r.json())
+      .then((d: { preferences: SavedUserPreferences }) => {
+        if (d.preferences) setPrefs({ ...DEFAULT_PREFS, ...d.preferences });
+      });
+  }, []);
+
+  const toggleSection = (name: string) => {
+    setPrefs((p) => ({
+      ...p,
+      hiddenSections: p.hiddenSections.includes(name)
+        ? p.hiddenSections.filter((s) => s !== name)
+        : [...p.hiddenSections, name],
+    }));
+    setSaved(false);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    await fetch("/api/pm/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(prefs),
+    });
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "var(--text-muted)",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    marginBottom: "10px",
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 3000,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border)",
+          borderRadius: "12px",
+          width: "460px",
+          maxHeight: "80vh",
+          overflowY: "auto",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.25)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: "20px 24px 16px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <h2 style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)", margin: 0 }}>
+            View Preferences
+          </h2>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "18px",
+              color: "var(--text-muted)",
+              padding: "0 2px",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "20px 24px" }}>
+          {/* Section visibility */}
+          <div style={{ marginBottom: "24px" }}>
+            <div style={labelStyle}>Default section visibility</div>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px", marginTop: 0 }}>
+              Sections checked below will be hidden by default across all project views. You can always override per-project using the Filter button.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {DEFAULT_SECTION_NAMES.map((name) => {
+                const hidden = prefs.hiddenSections.includes(name);
+                return (
+                  <label
+                    key={name}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      cursor: "pointer",
+                      padding: "8px 12px",
+                      borderRadius: "6px",
+                      border: `1px solid ${hidden ? "var(--accent)" : "var(--border)"}`,
+                      background: hidden ? "var(--accent-subtle, rgba(47,92,255,0.06))" : "transparent",
+                      transition: "all 0.1s",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={hidden}
+                      onChange={() => toggleSection(name)}
+                      style={{ accentColor: "var(--accent)", width: "14px", height: "14px", cursor: "pointer" }}
+                    />
+                    <span style={{ fontSize: "13px", color: "var(--text-primary)", flex: 1 }}>{name}</span>
+                    {hidden && (
+                      <span style={{ fontSize: "10px", color: "var(--accent)", fontWeight: 600 }}>HIDDEN</span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Hide completed projects */}
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
+            <div style={labelStyle}>Projects view</div>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                cursor: "pointer",
+                padding: "10px 12px",
+                borderRadius: "6px",
+                border: `1px solid ${prefs.hideCompletedProjects ? "var(--accent)" : "var(--border)"}`,
+                background: prefs.hideCompletedProjects ? "var(--accent-subtle, rgba(47,92,255,0.06))" : "transparent",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={prefs.hideCompletedProjects}
+                onChange={() => { setPrefs((p) => ({ ...p, hideCompletedProjects: !p.hideCompletedProjects })); setSaved(false); }}
+                style={{ accentColor: "var(--accent)", width: "14px", height: "14px", cursor: "pointer" }}
+              />
+              <div>
+                <div style={{ fontSize: "13px", color: "var(--text-primary)", fontWeight: 500 }}>Hide completed projects</div>
+                <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                  Completed projects won&apos;t appear in your Projects list by default
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            padding: "16px 24px",
+            borderTop: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            gap: "10px",
+          }}
+        >
+          {saved && (
+            <span style={{ fontSize: "12px", color: "#0f7a52", fontWeight: 500 }}>Saved!</span>
+          )}
+          <button
+            onClick={onClose}
+            style={{
+              padding: "7px 16px",
+              borderRadius: "6px",
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontSize: "13px",
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={saving}
+            style={{
+              padding: "7px 16px",
+              borderRadius: "6px",
+              border: "none",
+              background: "var(--accent)",
+              color: "white",
+              fontSize: "13px",
+              fontWeight: 500,
+              cursor: "pointer",
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving ? "Saving…" : "Save preferences"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 
 export function Sidebar({ user }: SidebarProps) {
@@ -587,6 +821,19 @@ export function Sidebar({ user }: SidebarProps) {
   >(undefined);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showNewTeam, setShowNewTeam] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
 
   const loadData = useCallback(() => {
     fetch("/api/pm/projects")
@@ -812,57 +1059,143 @@ export function Sidebar({ user }: SidebarProps) {
       </div>
 
       {/* User footer */}
-      <div
-        style={{
-          padding: "10px 12px",
-          borderTop: "1px solid rgba(255,255,255,0.07)",
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-        }}
-      >
-        <div
+      <div ref={userMenuRef} style={{ position: "relative" }}>
+        {/* User menu popup */}
+        {showUserMenu && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "calc(100% + 6px)",
+              left: "8px",
+              right: "8px",
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border)",
+              borderRadius: "8px",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+              overflow: "hidden",
+              zIndex: 500,
+            }}
+          >
+            <div
+              style={{
+                padding: "10px 12px 8px",
+                borderBottom: "1px solid var(--border)",
+              }}
+            >
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {user.name}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {user.email}
+              </div>
+            </div>
+            <button
+              onClick={() => { setShowSettings(true); setShowUserMenu(false); }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                width: "100%",
+                padding: "9px 12px",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--text-secondary)",
+                fontSize: "13px",
+                textAlign: "left",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.06)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+            >
+              <span style={{ fontSize: "13px" }}>⚙</span>
+              Settings
+            </button>
+            <div style={{ height: "1px", background: "var(--border)", margin: "0 8px" }} />
+            <a
+              href="/sign-in"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                width: "100%",
+                padding: "9px 12px",
+                background: "none",
+                color: "var(--text-muted)",
+                fontSize: "13px",
+                textDecoration: "none",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.06)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "none"; }}
+            >
+              <span style={{ fontSize: "12px" }}>↪</span>
+              Log out
+            </a>
+          </div>
+        )}
+
+        <button
+          onClick={() => setShowUserMenu((v) => !v)}
           style={{
-            width: "26px",
-            height: "26px",
-            borderRadius: "50%",
-            background: "var(--accent)",
+            width: "100%",
+            padding: "10px 12px",
+            borderTop: "1px solid rgba(255,255,255,0.07)",
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
-            fontSize: "11px",
-            fontWeight: 600,
-            color: "white",
-            flexShrink: 0,
+            gap: "8px",
+            background: showUserMenu ? "rgba(255,255,255,0.06)" : "none",
+            border: "none",
+            cursor: "pointer",
+            textAlign: "left",
           }}
+          onMouseEnter={(e) => { if (!showUserMenu) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.05)"; }}
+          onMouseLeave={(e) => { if (!showUserMenu) (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
         >
-          {user.name.charAt(0).toUpperCase()}
-        </div>
-        <div style={{ overflow: "hidden", flex: 1 }}>
           <div
             style={{
-              fontSize: "12.5px",
-              fontWeight: 500,
-              color: "white",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {user.name}
-          </div>
-          <div
-            style={{
+              width: "26px",
+              height: "26px",
+              borderRadius: "50%",
+              background: "var(--accent)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               fontSize: "11px",
-              color: "rgba(255,255,255,0.45)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              fontWeight: 600,
+              color: "white",
+              flexShrink: 0,
             }}
           >
-            {user.email}
+            {user.name.charAt(0).toUpperCase()}
           </div>
-        </div>
+          <div style={{ overflow: "hidden", flex: 1 }}>
+            <div
+              style={{
+                fontSize: "12.5px",
+                fontWeight: 500,
+                color: "white",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {user.name}
+            </div>
+            <div
+              style={{
+                fontSize: "11px",
+                color: "rgba(255,255,255,0.45)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {user.email}
+            </div>
+          </div>
+          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", flexShrink: 0 }}>
+            {showUserMenu ? "▾" : "▴"}
+          </span>
+        </button>
       </div>
 
       {/* Modals */}
@@ -881,6 +1214,9 @@ export function Sidebar({ user }: SidebarProps) {
           onClose={() => setShowNewTeam(false)}
           onCreated={handleTeamCreated}
         />
+      )}
+      {showSettings && (
+        <GlobalSettingsModal onClose={() => setShowSettings(false)} />
       )}
     </aside>
   );

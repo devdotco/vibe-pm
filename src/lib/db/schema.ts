@@ -374,6 +374,17 @@ export const projectChannelLinks = pgTable(
   (t) => [uniqueIndex("project_channel_links_unique_idx").on(t.projectId, t.channelId)]
 );
 
+// ── User Preferences ──────────────────────────────────────────────────────────
+
+export const userPreferences = pgTable("user_preferences", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().unique(),
+  orgId: text("org_id").notNull(),
+  preferences: jsonb("preferences").default({}).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ── Auth tables (shared with other ViBe modules) ──────────────────────────────
 
 export const users = pgTable("users", {
@@ -493,3 +504,9 @@ export type WebhookOutboxRow = typeof webhookOutbox.$inferSelect;
 export type ProjectChannelLink = typeof projectChannelLinks.$inferSelect;
 export type TaskWatcher = typeof taskWatchers.$inferSelect;
 export type TaskRecurrenceRow = typeof taskRecurrence.$inferSelect;
+export type UserPreferencesRow = typeof userPreferences.$inferSelect;
+
+export interface SavedUserPreferences {
+  hiddenSections: string[];
+  hideCompletedProjects: boolean;
+}

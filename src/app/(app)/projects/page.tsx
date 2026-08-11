@@ -221,6 +221,16 @@ export default function ProjectsPage() {
   const [filter, setFilter] = useState<"all" | "active" | "completed">("all");
 
   useEffect(() => {
+    fetch("/api/pm/preferences")
+      .then((r) => r.json())
+      .then((d: { preferences?: { hideCompletedProjects?: boolean } }) => {
+        const hide = d.preferences?.hideCompletedProjects ?? false;
+        if (hide) setFilter("active");
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     fetch("/api/pm/projects")
       .then((r) => {
         if (r.status === 401) { window.location.href = '/sign-in'; return null; }
