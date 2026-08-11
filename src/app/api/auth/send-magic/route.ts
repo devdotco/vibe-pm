@@ -21,11 +21,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Email not configured.' }, { status: 503 });
   }
 
-  const body = await req.json() as { email?: string; next?: string };
+  let body: { email?: string; next?: string };
+  try {
+    body = await req.json() as { email?: string; next?: string };
+  } catch {
+    return NextResponse.json({ error: 'Invalid request.' }, { status: 400 });
+  }
   const email = body.email?.trim().toLowerCase();
   if (!email) return NextResponse.json({ error: 'Email required.' }, { status: 400 });
 
-  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  let user: { email: string; name: string } | undefined;
+  try {
+    const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    user = rows[0];
+  } catch {
+    return NextResponse.json({ error: 'Service unavailable. Please try again.' }, { status: 503 });
+  }
   if (!user) {
     return NextResponse.json({ error: 'No account found for that email.' }, { status: 404 });
   }
