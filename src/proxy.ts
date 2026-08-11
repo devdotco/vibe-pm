@@ -16,12 +16,11 @@ export function proxy(req: NextRequest) {
   if (isPublic) return NextResponse.next();
   const token = req.cookies.get("__vibe_session")?.value;
   if (!token) {
-    const signInUrl = process.env.AUTH_URL ?? 'https://finance.vb.co';
     const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'pm.vb.co';
     const proto = req.headers.get('x-forwarded-proto') ?? 'https';
     const publicUrl = `${proto}://${host}${req.nextUrl.pathname}${req.nextUrl.search}`;
     return NextResponse.redirect(
-      new URL(`/sign-in?next=${encodeURIComponent(publicUrl)}`, signInUrl)
+      new URL(`/sign-in?next=${encodeURIComponent(publicUrl)}`, `${proto}://${host}`)
     );
   }
   return NextResponse.next();
