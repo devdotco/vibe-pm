@@ -69,10 +69,6 @@ function isOverdue(d: string | null, done: boolean): boolean {
   return new Date(d + "T23:59:59") < new Date();
 }
 
-function isNew(createdAt?: string): boolean {
-  if (!createdAt) return false;
-  return Date.now() - new Date(createdAt).getTime() < 24 * 60 * 60 * 1000;
-}
 
 function buildGridCols(cols: ColVis): string {
   return [
@@ -646,7 +642,6 @@ function TaskRow({
   const [subtaskTitle, setSubtaskTitle] = useState("");
   const done = task.status === "completed";
   const overdue = isOverdue(task.dueDate, done);
-  const showDot = isNew(task.createdAt) && !done;
   const hasSubtasks = (task.subtaskCount ?? 0) > 0 || subtasks.length > 0;
   const showSelectBox = hovered || selected || anySelected;
 
@@ -671,9 +666,9 @@ function TaskRow({
           outline: "none",
         }}
       >
-        {/* Selection checkbox / blue dot */}
+        {/* Selection checkbox */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-          {showSelectBox ? (
+          {showSelectBox && (
             <input
               type="checkbox"
               checked={selected}
@@ -681,10 +676,6 @@ function TaskRow({
               onClick={e => e.stopPropagation()}
               style={{ width: "13px", height: "13px", accentColor: "var(--accent)", cursor: "pointer", flexShrink: 0 }}
             />
-          ) : (
-            showDot && !done && (
-              <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#2f5cff" }} />
-            )
           )}
         </div>
 

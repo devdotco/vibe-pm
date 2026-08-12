@@ -25,10 +25,17 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
   const searchParams = useSearchParams();
   const router = useRouter();
   const view = searchParams.get("view") ?? "list";
+  const selectedTaskId = searchParams.get("task");
   const [project, setProject] = useState<Project | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  const handleTaskClick = (id: string) => {
+    router.push(`?view=${view}&task=${id}`, { scroll: false });
+  };
+  const handleTaskClose = () => {
+    router.push(`?view=${view}`, { scroll: false });
+  };
   const pusherRef = useRef<PusherClient | null>(null);
 
   useEffect(() => {
@@ -127,18 +134,18 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
           <ProjectListView
             projectId={projectId} project={project} sections={sections} tasks={tasks}
             setSections={setSections} setTasks={setTasks}
-            onTaskClick={setSelectedTaskId}
+            onTaskClick={handleTaskClick}
           />
         )}
         {view === "board" && (
           <KanbanBoard
             projectId={projectId} sections={sections} tasks={tasks}
             setSections={setSections} setTasks={setTasks}
-            onTaskClick={setSelectedTaskId}
+            onTaskClick={handleTaskClick}
           />
         )}
-        {view === "calendar" && <CalendarView tasks={tasks} onTaskClick={setSelectedTaskId} />}
-        {view === "timeline" && <TimelineView tasks={tasks} sections={sections} onTaskClick={setSelectedTaskId} />}
+        {view === "calendar" && <CalendarView tasks={tasks} onTaskClick={handleTaskClick} />}
+        {view === "timeline" && <TimelineView tasks={tasks} sections={sections} onTaskClick={handleTaskClick} />}
         {view === "milestones" && <MilestonesView projectId={projectId} />}
       </div>
 
@@ -146,7 +153,7 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
       {selectedTaskId && (
         <TaskDetailPanel
           taskId={selectedTaskId}
-          onClose={() => setSelectedTaskId(null)}
+          onClose={handleTaskClose}
         />
       )}
     </div>

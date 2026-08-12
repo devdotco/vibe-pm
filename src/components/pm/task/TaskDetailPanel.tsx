@@ -108,6 +108,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const [assigneeSearch, setAssigneeSearch] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState(-1);
+  const [showAllFeed, setShowAllFeed] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const assigneePickerRef = useRef<HTMLDivElement>(null);
@@ -719,8 +720,16 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
           {/* Activity feed */}
           <div style={{ padding: "16px 20px" }}>
             <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "12px" }}>Activity</div>
+            {feed.length > 3 && (
+              <button
+                onClick={() => setShowAllFeed(v => !v)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: "13px", padding: "0 0 10px 0", display: "block" }}
+              >
+                {showAllFeed ? "Hide earlier comments" : `Show ${feed.length - 3} earlier comment${feed.length - 3 === 1 ? "" : "s"}`}
+              </button>
+            )}
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {feed.map(item => (
+              {(showAllFeed ? feed : feed.slice(-3)).map(item => (
                 <div key={item.id} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
                   <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "var(--accent-subtle)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 600, flexShrink: 0 }}>
                     {(item.userName ?? item.userId).slice(0, 2).toUpperCase()}

@@ -63,14 +63,19 @@ function TaskRow({ task, isLast }: { task: TaskCard; isLast: boolean }) {
   const isOverdue =
     task.dueDate && isBefore(parseISO(task.dueDate), new Date());
   return (
-    <div
+    <Link
+      href={`/projects/${task.projectId}?task=${task.id}`}
       style={{
         display: "flex",
         alignItems: "center",
         gap: "10px",
         padding: "9px 14px",
         borderBottom: isLast ? "none" : "1px solid var(--border)",
+        textDecoration: "none",
+        cursor: "pointer",
       }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--panel-hover)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; }}
     >
       <div
         style={{
@@ -132,7 +137,7 @@ function TaskRow({ task, isLast }: { task: TaskCard; isLast: boolean }) {
           {format(parseISO(task.dueDate), "MMM d")}
         </span>
       )}
-    </div>
+    </Link>
   );
 }
 
