@@ -736,7 +736,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                   </div>
                   <div style={{ flex: 1 }}>
                     {item._type === "comment" ? (
-                      <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)" }}>
+                      <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)", whiteSpace: "pre-wrap" }}>
                         {renderWithMentions(item.content ?? "")}
                         {item.source === "email" && (
                           <span title="Via email reply" style={{ marginLeft: "6px", fontSize: "11px", color: "var(--text-muted)", verticalAlign: "middle" }}>&#128231;</span>
