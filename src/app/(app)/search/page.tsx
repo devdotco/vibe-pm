@@ -49,7 +49,7 @@ export default function SearchPage() {
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {type === "tasks" && (results as Array<{ task: { id: string; projectId: string; title: string; status: string; priority: string }; projectName: string }>).map(r => (
-          <a key={r.task.id} href={`/projects/${r.task.projectId}`} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", textDecoration: "none" }}>
+          <a key={r.task.id} href={`/projects/${r.task.projectId}?task=${r.task.id}`} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", textDecoration: "none" }}>
             <PriorityDot priority={r.task.priority} />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: "14px", color: "var(--text-primary)", fontWeight: 500 }}>{r.task.title}</div>
@@ -64,10 +64,11 @@ export default function SearchPage() {
             <span style={{ fontSize: "14px", color: "var(--text-primary)", flex: 1 }}>{p.name}</span>
           </a>
         ))}
-        {type === "comments" && (results as Array<{ id: string; content: string; taskId: string }>).map(c => (
-          <div key={c.id} style={{ padding: "12px 16px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px" }}>
-            <div style={{ fontSize: "13px", color: "var(--text-primary)" }}>{c.content.slice(0, 200)}</div>
-          </div>
+        {type === "comments" && (results as Array<{ comment: { id: string; content: string; taskId: string }; projectId: string; projectName: string; taskTitle: string }>).map(r => (
+          <a key={r.comment.id} href={`/projects/${r.projectId}?task=${r.comment.taskId}`} style={{ display: "block", padding: "12px 16px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", textDecoration: "none" }}>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>{r.taskTitle} · {r.projectName}</div>
+            <div style={{ fontSize: "13px", color: "var(--text-primary)" }}>{r.comment.content.slice(0, 200)}</div>
+          </a>
         ))}
       </div>
     </div>

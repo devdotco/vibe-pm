@@ -30,10 +30,11 @@ function CommentMarkdown({ content }: { content: string }) {
   return (
     <ReactMarkdown
       components={{
-        p: ({ children }) => <span style={{ display: "block", marginBottom: 3 }}>{children}</span>,
-        ul: ({ children }) => <ul style={{ paddingLeft: 18, margin: "3px 0" }}>{children}</ul>,
-        ol: ({ children }) => <ol style={{ paddingLeft: 18, margin: "3px 0" }}>{children}</ol>,
-        li: ({ children }) => <li style={{ margin: "1px 0" }}>{children}</li>,
+        p: ({ children }) => <span style={{ display: "block", marginBottom: 8 }}>{children}</span>,
+        br: () => <span style={{ display: "block", height: "6px" }} />,
+        ul: ({ children }) => <ul style={{ paddingLeft: 18, margin: "6px 0" }}>{children}</ul>,
+        ol: ({ children }) => <ol style={{ paddingLeft: 18, margin: "6px 0" }}>{children}</ol>,
+        li: ({ children }) => <li style={{ margin: "3px 0" }}>{children}</li>,
         strong: ({ children }) => <strong>{children}</strong>,
         em: ({ children }) => <em>{children}</em>,
         code: ({ children }) => <code style={{ background: "rgba(0,0,0,0.07)", padding: "1px 4px", borderRadius: 3, fontSize: "12px", fontFamily: "monospace" }}>{children}</code>,

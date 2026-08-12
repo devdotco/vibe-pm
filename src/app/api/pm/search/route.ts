@@ -24,8 +24,13 @@ export async function GET(req: NextRequest) {
   }
 
   if (type === 'comments') {
-    const results = await db.select().from(taskComments)
+    const results = await db
+      .select({ comment: taskComments, projectId: tasks.projectId, projectName: projects.name, taskTitle: tasks.title })
+      .from(taskComments)
+      .innerJoin(tasks, eq(taskComments.taskId, tasks.id))
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
       .where(and(eq(taskComments.orgId, user.orgId), isNull(taskComments.deletedAt), ilike(taskComments.content, `%${q}%`)))
+      .orderBy(desc(taskComments.updatedAt))
       .limit(25);
     return NextResponse.json({ results });
   }
