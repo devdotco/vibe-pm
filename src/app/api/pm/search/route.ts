@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { tasks, taskComments, projects } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
-import { eq, and, isNull, ilike, or } from 'drizzle-orm';
+import { eq, and, isNull, ilike, or, desc } from 'drizzle-orm';
 
 export async function GET(req: NextRequest) {
   const user = await requireUser();
@@ -17,7 +17,9 @@ export async function GET(req: NextRequest) {
       .where(and(
         eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt),
         or(ilike(tasks.title, `%${q}%`), ilike(tasks.description, `%${q}%`))
-      )).limit(25);
+      ))
+      .orderBy(desc(tasks.updatedAt))
+      .limit(50);
     return NextResponse.json({ results });
   }
 
