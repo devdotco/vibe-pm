@@ -869,8 +869,6 @@ function buildGroups(tasks: Task[], groupBy: GroupBy, sections: Section[]): Task
       const st = tasks.filter(t => t.sectionId === s.id);
       result.push({ key: s.id, label: s.name, tasks: st, sectionId: s.id });
     }
-    const unsectioned = tasks.filter(t => !t.sectionId || !sections.find(s => s.id === t.sectionId));
-    if (unsectioned.length > 0) result.push({ key: "__none__", label: "No section", tasks: unsectioned });
     return result;
   }
   if (groupBy === "priority") {

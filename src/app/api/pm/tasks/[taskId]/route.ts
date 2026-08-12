@@ -33,7 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
   };
   if (body.status && body.status !== existing.status && STATUS_TO_SECTION[body.status] && !body.sectionId) {
     const projectSections = await db.select().from(sections)
-      .where(and(eq(sections.projectId, existing.projectId), eq(sections.orgId, user.orgId)));
+      .where(and(eq(sections.projectId, existing.projectId), eq(sections.orgId, user.orgId), eq(sections.isArchived, false)));
     const match = projectSections.find(s =>
       s.name.toLowerCase() === STATUS_TO_SECTION[body.status]!.toLowerCase()
     );

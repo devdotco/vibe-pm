@@ -53,17 +53,20 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
     const channelName = `org-${project.orgId}-project-${projectId}`;
     const ch = client.subscribe(channelName);
 
-    ch.bind("task.created", (data: Task) => {
-      setTasks(prev => prev.some(t => t.id === data.id) ? prev : [...prev, data]);
+    ch.bind("task.created", (data: { task: Task }) => {
+      const task = data.task;
+      setTasks(prev => prev.some(t => t.id === task.id) ? prev : [...prev, task]);
     });
-    ch.bind("task.updated", (data: Task) => {
-      setTasks(prev => prev.map(t => t.id === data.id ? { ...t, ...data } : t));
+    ch.bind("task.updated", (data: { task: Task }) => {
+      const task = data.task;
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...task } : t));
     });
     ch.bind("task.deleted", (data: { id: string }) => {
       setTasks(prev => prev.filter(t => t.id !== data.id));
     });
-    ch.bind("section.created", (data: Section) => {
-      setSections(prev => prev.some(s => s.id === data.id) ? prev : [...prev, data]);
+    ch.bind("section.created", (data: { section: Section } | Section) => {
+      const section = (data as { section: Section }).section ?? data as Section;
+      setSections(prev => prev.some(s => s.id === section.id) ? prev : [...prev, section]);
     });
 
     return () => {
