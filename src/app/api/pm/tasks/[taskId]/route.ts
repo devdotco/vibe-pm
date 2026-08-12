@@ -30,6 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
     not_started: 'To Do',
     in_progress: 'In Progress',
     blocked: 'Blocked',
+    completed: 'Done',
   };
   if (body.status && body.status !== existing.status && STATUS_TO_SECTION[body.status] && !body.sectionId) {
     const projectSections = await db.select().from(sections)

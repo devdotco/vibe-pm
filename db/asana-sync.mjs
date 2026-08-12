@@ -58,6 +58,18 @@ async function asanaPaginate(path, params = {}) {
   return results;
 }
 
+// Stream one page at a time, calling cb(item) for each item
+async function asanaStream(path, params, cb) {
+  let offset = null;
+  do {
+    const p = { ...params, limit: '100' };
+    if (offset) p.offset = offset;
+    const data = await asanaGet(path, p);
+    for (const item of data.data ?? []) await cb(item);
+    offset = data.next_page?.offset ?? null;
+  } while (offset);
+}
+
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
 async function dbQuery(sql, values = []) {
@@ -135,20 +147,21 @@ async function main() {
         taskByTitle.set(t.title.toLowerCase().trim(), t.id);
       }
 
-      // 7. Fetch all Asana tasks in this project (open + completed)
-      const asanaTasks = await asanaPaginate(`/tasks`, {
+      // 7. Stream only incomplete Asana tasks (completed=false) to keep memory low
+      let taskCount = 0;
+      await asanaStream(`/tasks`, {
         project: ap.gid,
+        completed_since: 'now', // only incomplete tasks
         opt_fields: 'gid,name,notes,assignee.email,due_on,completed,memberships.section.name,created_at,modified_at',
-      });
-      console.log(`  Asana has ${asanaTasks.length} tasks total`);
+      }, async (at) => {
+        taskCount++;
 
-      for (const at of asanaTasks) {
         // Resolve section
         const sectionName = at.memberships?.[0]?.section?.name?.toLowerCase() ?? '';
         const sectionId = sectionByName.get(sectionName) ?? defaultSectionId;
 
         // Resolve assignee
-        const assigneeEmail = at.assignee?.email?.toLowerCase() ?? '';
+        const assigneeEmail = at.assignee?.email?.toLowerCase() || '';
         const assigneeId = assigneeEmail ? (userByEmail.get(assigneeEmail) ?? null) : null;
 
         const status = at.completed ? 'completed' : 'not_started';
@@ -185,7 +198,7 @@ async function main() {
           totalNewTasks++;
           process.stdout.write('+');
         } else {
-          // Update asana_gid in custom_fields if not set
+          // Store asana_gid in custom_fields if not set yet
           await dbQuery(
             `UPDATE tasks SET custom_fields = custom_fields || $1::jsonb, updated_at = NOW()
              WHERE id = $2 AND (custom_fields->>'asana_gid') IS NULL`,
@@ -195,51 +208,46 @@ async function main() {
           process.stdout.write('.');
         }
 
-        // 8. Fetch Asana stories (comments) for this task
-        let stories;
+        // 8. Fetch Asana stories (comments) for this task — paginated, not accumulated
+        const commentRows = [];
         try {
-          stories = await asanaPaginate(`/tasks/${at.gid}/stories`, {
+          await asanaStream(`/tasks/${at.gid}/stories`, {
             opt_fields: 'type,text,created_by.email,created_at,resource_subtype',
+          }, async (story) => {
+            if (story.type === 'comment' && story.resource_subtype === 'comment_added' && story.text) {
+              commentRows.push(story);
+            }
           });
-        } catch {
-          stories = [];
-        }
+        } catch { /* skip tasks whose stories are inaccessible */ }
 
-        const commentStories = stories.filter(
-          s => s.type === 'comment' && s.resource_subtype === 'comment_added' && s.text
-        );
+        if (commentRows.length === 0) return;
 
-        if (commentStories.length === 0) continue;
-
-        // Load existing comments for this task to avoid duplicates
+        // Load existing comments for dedup
         const { rows: existingComments } = await dbQuery(
-          "SELECT content FROM task_comments WHERE task_id = $1",
+          'SELECT content FROM task_comments WHERE task_id = $1',
           [vibeTaskId]
         );
         const existingContentSet = new Set(existingComments.map(c => c.content.trim()));
 
-        for (const story of commentStories) {
+        for (const story of commentRows) {
           const content = story.text.trim();
           if (!content || existingContentSet.has(content)) continue;
 
-          const commentAuthorEmail = story.created_by?.email?.toLowerCase() ?? '';
-          const commentUserId = (commentAuthorEmail && userByEmail.get(commentAuthorEmail))
-            ?? SYSTEM_USER;
+          const commentAuthorEmail = story.created_by?.email?.toLowerCase() || '';
+          const commentUserId = (commentAuthorEmail ? userByEmail.get(commentAuthorEmail) : null)
+            || SYSTEM_USER;
 
           await dbQuery(
             `INSERT INTO task_comments (task_id, org_id, user_id, content, source, created_at)
              VALUES ($1, $2, $3, $4, 'asana', $5)`,
-            [
-              vibeTaskId, vp.org_id, commentUserId, content,
-              new Date(story.created_at),
-            ]
+            [vibeTaskId, vp.org_id, commentUserId, content, new Date(story.created_at)]
           );
           existingContentSet.add(content);
           totalNewComments++;
         }
-      }
+      });
       console.log(); // newline after progress dots
-      console.log(`  Done. Tasks processed: ${asanaTasks.length}`);
+      console.log(`  Done. Tasks processed: ${taskCount}`);
     }
   }
 

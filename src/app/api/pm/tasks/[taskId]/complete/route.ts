@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks } from '@/lib/db/schema';
+import { tasks, sections } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { dispatchEvent } from '@/lib/webhooks/dispatcher';
@@ -14,9 +14,18 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ta
     .where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt)));
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
+  // Auto-move to "Done" section if one exists
+  const projectSections = await db.select().from(sections)
+    .where(and(eq(sections.projectId, existing.projectId), eq(sections.orgId, user.orgId), eq(sections.isArchived, false)));
+  const doneSection = projectSections.find(s => s.name.toLowerCase() === 'done');
+
   const [task] = await db.transaction(async (tx) => {
     const [updated] = await tx.update(tasks).set({
-      status: 'completed', completedAt: new Date(), completedBy: user.id, updatedAt: new Date(),
+      status: 'completed',
+      completedAt: new Date(),
+      completedBy: user.id,
+      updatedAt: new Date(),
+      ...(doneSection ? { sectionId: doneSection.id } : {}),
     }).where(eq(tasks.id, taskId)).returning();
     await logActivity({
       taskId, projectId: existing.projectId, orgId: user.orgId, userId: user.id,
@@ -26,6 +35,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ta
   });
 
   dispatchEvent({ eventType: 'task.completed', orgId: user.orgId, projectId: existing.projectId, taskId, triggeredBy: user.id, data: { title: existing.title } });
-  pusherServer.trigger(projectChannel(existing.projectId, user.orgId), 'task.completed', { task }).catch(() => {});
+  pusherServer.trigger(projectChannel(existing.projectId, user.orgId), 'task.updated', { task }).catch(() => {});
   return NextResponse.json({ task });
 }
