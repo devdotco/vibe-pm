@@ -7,21 +7,118 @@ import { PrioritySelect } from "@/components/pm/PriorityBadge";
 import ReactMarkdown from "react-markdown";
 import { formatDistanceToNow, parseISO } from "date-fns";
 
-function renderWithMentions(text: string) {
-  const parts = text.split(/(@\w+|https?:\/\/[^\s<>"']+|www\.[^\s<>"']+|[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.(?:com|org|net|io|co|gov|edu|app|dev|ai|tech|info|me|us|uk|au|ca|de|fr|jp|cn|br|in|ru|nl)(?:\/[^\s<>"']*)?)/gi);
+// ── Comment rendering ────────────────────────────────────────────────────────
+
+function CommentContent({ content }: { content: string }) {
+  // Handle <u>…</u> before ReactMarkdown (markdown has no underline syntax)
+  const segments = content.split(/(<u>[\s\S]*?<\/u>)/);
+  if (segments.length === 1) return <CommentMarkdown content={content} />;
   return (
     <>
-      {parts.map((part, i) => {
-        if (/^@\w+$/.test(part)) {
-          return <strong key={i} style={{ color: "var(--accent)" }}>{part}</strong>;
-        }
-        if (/^(?:https?:\/\/|www\.)/i.test(part) || /^[a-zA-Z0-9].*\.(?:com|org|net|io|co|gov|edu|app|dev|ai|tech|info|me|us|uk|au|ca|de|fr|jp|cn|br|in|ru|nl)/i.test(part)) {
-          const href = /^https?:\/\//i.test(part) ? part : `https://${part}`;
-          return <a key={i} href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "underline" }}>{part}</a>;
-        }
-        return part;
-      })}
+      {segments.map((seg, i) =>
+        seg.startsWith("<u>") && seg.endsWith("</u>")
+          ? <span key={i} style={{ textDecoration: "underline" }}>{seg.slice(3, -4)}</span>
+          : <CommentMarkdown key={i} content={seg} />
+      )}
     </>
+  );
+}
+
+function CommentMarkdown({ content }: { content: string }) {
+  // Convert @Name → markdown link so we can style it in the `a` component
+  const processed = content.replace(/@(\w+)/g, "[@$1](@$1)");
+  return (
+    <ReactMarkdown
+      components={{
+        p: ({ children }) => <span style={{ display: "block", marginBottom: 3 }}>{children}</span>,
+        ul: ({ children }) => <ul style={{ paddingLeft: 18, margin: "3px 0" }}>{children}</ul>,
+        ol: ({ children }) => <ol style={{ paddingLeft: 18, margin: "3px 0" }}>{children}</ol>,
+        li: ({ children }) => <li style={{ margin: "1px 0" }}>{children}</li>,
+        strong: ({ children }) => <strong>{children}</strong>,
+        em: ({ children }) => <em>{children}</em>,
+        code: ({ children }) => <code style={{ background: "rgba(0,0,0,0.07)", padding: "1px 4px", borderRadius: 3, fontSize: "12px", fontFamily: "monospace" }}>{children}</code>,
+        a: ({ href, children }) =>
+          typeof href === "string" && href.startsWith("@")
+            ? <strong style={{ color: "var(--accent)", fontWeight: 600 }}>{children}</strong>
+            : <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "underline" }}>{children}</a>,
+      }}
+    >
+      {processed}
+    </ReactMarkdown>
+  );
+}
+
+// ── Formatting toolbar ────────────────────────────────────────────────────────
+
+type FmtType = "bold" | "italic" | "underline" | "bullet" | "numbered";
+
+function applyFormat(
+  fmt: FmtType,
+  ref: React.RefObject<HTMLTextAreaElement | null>,
+  value: string,
+  onChange: (v: string) => void,
+) {
+  const el = ref.current;
+  if (!el) return;
+  const start = el.selectionStart ?? 0;
+  const end = el.selectionEnd ?? 0;
+  const sel = value.slice(start, end);
+
+  if (fmt === "bullet" || fmt === "numbered") {
+    const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+    const prefix = fmt === "bullet" ? "- " : "1. ";
+    const next = value.slice(0, lineStart) + prefix + value.slice(lineStart);
+    onChange(next);
+    setTimeout(() => { el.focus(); el.setSelectionRange(end + prefix.length, end + prefix.length); }, 0);
+    return;
+  }
+
+  const map: Record<string, [string, string, string]> = {
+    bold:      ["**", "**", "bold text"],
+    italic:    ["*",  "*",  "italic text"],
+    underline: ["<u>", "</u>", "underline text"],
+  };
+  const [open, close, placeholder] = map[fmt]!;
+  const insert = sel ? `${open}${sel}${close}` : `${open}${placeholder}${close}`;
+  const cursor = sel ? start + insert.length : start + open.length;
+  onChange(value.slice(0, start) + insert + value.slice(end));
+  setTimeout(() => { el.focus(); el.setSelectionRange(cursor, cursor); }, 0);
+}
+
+const FMT_BUTTONS: { fmt: FmtType; label: string; title: string; style?: React.CSSProperties }[] = [
+  { fmt: "bold",      label: "B",  title: "Bold",          style: { fontWeight: 700 } },
+  { fmt: "italic",    label: "I",  title: "Italic",        style: { fontStyle: "italic" } },
+  { fmt: "underline", label: "U",  title: "Underline",     style: { textDecoration: "underline" } },
+  { fmt: "bullet",    label: "•",  title: "Bullet list",   style: { fontSize: 16 } },
+  { fmt: "numbered",  label: "1.", title: "Numbered list", style: { fontSize: 11 } },
+];
+
+function FormatToolbar({ textareaRef, value, onChange }: {
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div style={{ display: "flex", gap: "1px", padding: "3px 6px", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)" }}>
+      {FMT_BUTTONS.map(btn => (
+        <button
+          key={btn.fmt}
+          type="button"
+          title={btn.title}
+          onMouseDown={e => { e.preventDefault(); applyFormat(btn.fmt, textareaRef, value, onChange); }}
+          style={{
+            width: 26, height: 22, padding: 0, border: "none", background: "none",
+            cursor: "pointer", borderRadius: 3, fontSize: 13,
+            color: "var(--text-secondary)", display: "flex", alignItems: "center",
+            justifyContent: "center", ...btn.style,
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = "var(--panel-hover)")}
+          onMouseLeave={e => (e.currentTarget.style.background = "none")}
+        >
+          {btn.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -109,10 +206,16 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState(-1);
   const [showAllFeed, setShowAllFeed] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const assigneePickerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const loadAll = useCallback(() => {
     fetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => {
@@ -131,6 +234,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
 
   useEffect(() => {
     fetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
+    fetch("/api/pm/me").then(r => r.json()).then(d => setCurrentUserId(d.id ?? null)).catch(() => {});
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -189,6 +293,26 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     } finally {
       setPostingComment(false);
     }
+  };
+
+  const saveEdit = async () => {
+    if (!editingCommentId || !editContent.trim() || savingEdit) return;
+    setSavingEdit(true);
+    await fetch(`/api/pm/tasks/${taskId}/comments/${editingCommentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: editContent.trim() }),
+    });
+    setEditingCommentId(null);
+    const feedData = await fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json());
+    setFeed(feedData.feed ?? []);
+    setSavingEdit(false);
+  };
+
+  const deleteComment = async (id: string) => {
+    if (!confirm("Delete this comment?")) return;
+    await fetch(`/api/pm/tasks/${taskId}/comments/${id}`, { method: "DELETE" });
+    setFeed(prev => prev.filter(f => f.id !== id));
   };
 
   const addSubtask = async () => {
@@ -736,12 +860,55 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                   </div>
                   <div style={{ flex: 1 }}>
                     {item._type === "comment" ? (
-                      <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)", whiteSpace: "pre-wrap" }}>
-                        {renderWithMentions(item.content ?? "")}
-                        {item.source === "email" && (
-                          <span title="Via email reply" style={{ marginLeft: "6px", fontSize: "11px", color: "var(--text-muted)", verticalAlign: "middle" }}>&#128231;</span>
-                        )}
-                      </div>
+                      editingCommentId === item.id ? (
+                        <div>
+                          <div style={{ border: "1px solid var(--accent)", borderRadius: "6px", overflow: "hidden" }}>
+                            <FormatToolbar textareaRef={editTextareaRef} value={editContent} onChange={setEditContent} />
+                            <textarea
+                              ref={editTextareaRef}
+                              value={editContent}
+                              onChange={e => setEditContent(e.target.value)}
+                              rows={4}
+                              autoFocus
+                              onKeyDown={e => { if (e.key === "Escape") setEditingCommentId(null); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveEdit(); }}
+                              style={{ width: "100%", padding: "8px 10px", border: "none", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit" }}
+                            />
+                          </div>
+                          <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
+                            <button onClick={() => setEditingCommentId(null)} style={{ padding: "3px 10px", border: "1px solid var(--border)", borderRadius: "5px", background: "transparent", color: "var(--text-secondary)", fontSize: "12px", cursor: "pointer" }}>Cancel</button>
+                            <button onClick={saveEdit} disabled={savingEdit || !editContent.trim()} style={{ padding: "3px 10px", background: "var(--accent)", color: "white", border: "none", borderRadius: "5px", fontSize: "12px", cursor: "pointer", opacity: (savingEdit || !editContent.trim()) ? 0.6 : 1 }}>
+                              {savingEdit ? "Saving…" : "Save"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          style={{ position: "relative" }}
+                          onMouseEnter={() => setHoveredCommentId(item.id)}
+                          onMouseLeave={() => setHoveredCommentId(null)}
+                        >
+                          <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)" }}>
+                            <CommentContent content={item.content ?? ""} />
+                            {item.source === "email" && (
+                              <span title="Via email reply" style={{ marginLeft: "6px", fontSize: "11px", color: "var(--text-muted)" }}>&#128231;</span>
+                            )}
+                          </div>
+                          {hoveredCommentId === item.id && currentUserId === item.userId && (
+                            <div style={{ position: "absolute", top: 4, right: 6, display: "flex", gap: "3px" }}>
+                              <button
+                                onClick={() => { setEditingCommentId(item.id); setEditContent(item.content ?? ""); }}
+                                title="Edit"
+                                style={{ padding: "2px 6px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "4px", fontSize: "11px", cursor: "pointer", color: "var(--text-muted)" }}
+                              >✏</button>
+                              <button
+                                onClick={() => deleteComment(item.id)}
+                                title="Delete"
+                                style={{ padding: "2px 6px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "4px", fontSize: "11px", cursor: "pointer", color: "#ef4444" }}
+                              >✕</button>
+                            </div>
+                          )}
+                        </div>
+                      )
                     ) : (
                       <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
                         <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{item.userName ?? item.userId.slice(0, 8)}</span>
@@ -762,33 +929,35 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
             </div>
             <div style={{ marginTop: "16px" }}>
               <div style={{ position: "relative" }}>
-                <textarea
-                  ref={textareaRef}
-                  value={comment}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setComment(val);
-                    if (commentError) setCommentError("");
-                    // detect @mention before cursor
-                    const cursor = e.target.selectionStart ?? val.length;
-                    const before = val.slice(0, cursor);
-                    const match = before.match(/@([\w.]*)$/);
-                    if (match) {
-                      setMentionQuery(match[1]!);
-                      setMentionStart(cursor - match[0].length);
-                    } else {
-                      setMentionQuery(null);
-                      setMentionStart(-1);
-                    }
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === "Escape") { setMentionQuery(null); return; }
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { postComment(); return; }
-                  }}
-                  placeholder="Add a comment… (⌘Enter to post)"
-                  rows={3}
-                  style={{ width: "100%", padding: "8px 10px", border: `1px solid ${commentError ? "#ef4444" : "var(--border)"}`, borderRadius: "6px", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit" }}
-                />
+                <div style={{ border: `1px solid ${commentError ? "#ef4444" : "var(--border)"}`, borderRadius: "6px", overflow: "hidden" }}>
+                  <FormatToolbar textareaRef={textareaRef} value={comment} onChange={setComment} />
+                  <textarea
+                    ref={textareaRef}
+                    value={comment}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setComment(val);
+                      if (commentError) setCommentError("");
+                      const cursor = e.target.selectionStart ?? val.length;
+                      const before = val.slice(0, cursor);
+                      const match = before.match(/@([\w.]*)$/);
+                      if (match) {
+                        setMentionQuery(match[1]!);
+                        setMentionStart(cursor - match[0].length);
+                      } else {
+                        setMentionQuery(null);
+                        setMentionStart(-1);
+                      }
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === "Escape") { setMentionQuery(null); return; }
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { postComment(); return; }
+                    }}
+                    placeholder="Add a comment… (⌘Enter to post)"
+                    rows={3}
+                    style={{ width: "100%", padding: "8px 10px", border: "none", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit" }}
+                  />
+                </div>
                 {mentionQuery !== null && (
                   <div style={{ position: "absolute", bottom: "calc(100% + 4px)", left: 0, zIndex: 300, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", width: "220px", maxHeight: "180px", overflowY: "auto" }}>
                     {orgUsers
