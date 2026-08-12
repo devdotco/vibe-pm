@@ -77,7 +77,7 @@ function buildGridCols(cols: ColVis): string {
     "16px",
     "1fr",
     cols.dueDate ? "90px" : null,
-    cols.collaborators ? "100px" : null,
+    cols.collaborators ? "130px" : null,
     cols.projects ? "140px" : null,
     cols.visibility ? "130px" : null,
     "28px",
@@ -181,7 +181,7 @@ function ColumnHeader({
         textTransform: "uppercase", letterSpacing: "0.04em",
         padding: "0 8px", cursor: field ? "pointer" : "default",
         userSelect: "none", display: "flex", alignItems: "center", gap: "3px",
-        whiteSpace: "nowrap",
+        whiteSpace: "nowrap", overflow: "hidden",
       }}
     >
       {label}
