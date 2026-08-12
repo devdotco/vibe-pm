@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  CheckSquare,
-  MessageSquare,
-  DollarSign,
-  Users,
-  Zap,
   Home,
+  MessageSquare,
+  CheckSquare,
+  Users,
+  TrendingUp,
+  Building2,
   Bell,
 } from "lucide-react";
 
@@ -18,8 +18,8 @@ const FINANCE_URL =
   process.env.NEXT_PUBLIC_FINANCE_URL ?? "https://finance.vb.co";
 const CRM_URL =
   process.env.NEXT_PUBLIC_CRM_URL ?? "https://crm.vb.co";
-const MARKETING_URL =
-  process.env.NEXT_PUBLIC_MARKETING_URL ?? "https://marketing.vb.co";
+const PORTAL_URL =
+  process.env.NEXT_PUBLIC_PORTAL_URL ?? "https://portal.vb.co";
 const SHELL_URL =
   process.env.NEXT_PUBLIC_SHELL_URL ?? "https://app.vb.co";
 
@@ -161,9 +161,9 @@ export function AppSwitcher() {
         }}
       />
 
-      {/* PM */}
-      <AppIcon href="/home" title="ViBe PM" active={isPM}>
-        <CheckSquare size={17} />
+      {/* Home */}
+      <AppIcon href={SHELL_URL} title="ViBe Home" external>
+        <Home size={17} />
       </AppIcon>
 
       {/* Messaging */}
@@ -171,24 +171,24 @@ export function AppSwitcher() {
         <MessageSquare size={17} />
       </AppIcon>
 
+      {/* PM (active) */}
+      <AppIcon href="/home" title="ViBe PM" active={isPM}>
+        <CheckSquare size={17} />
+      </AppIcon>
+
+      {/* Portal */}
+      <AppIcon href={PORTAL_URL} title="ViBe Portal" external>
+        <Users size={17} />
+      </AppIcon>
+
       {/* Finance */}
       <AppIcon href={FINANCE_URL} title="ViBe Finance" external>
-        <DollarSign size={17} />
+        <TrendingUp size={17} />
       </AppIcon>
 
       {/* CRM */}
       <AppIcon href={CRM_URL} title="ViBe CRM" external>
-        <Users size={17} />
-      </AppIcon>
-
-      {/* Marketing */}
-      <AppIcon href={MARKETING_URL} title="ViBe Marketing" external>
-        <Zap size={17} />
-      </AppIcon>
-
-      {/* App shell */}
-      <AppIcon href={SHELL_URL} title="ViBe Home" external>
-        <Home size={17} />
+        <Building2 size={17} />
       </AppIcon>
 
       {/* Spacer */}
