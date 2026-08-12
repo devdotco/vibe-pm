@@ -1119,7 +1119,6 @@ export function ProjectListView({
                 display: "flex", alignItems: "center", gap: "8px",
                 padding: "5px 12px 5px 8px",
                 background: "var(--bg-elevated)",
-                position: "sticky", top: 0, zIndex: 9,
                 borderBottom: "1px solid var(--border)",
               }}>
                 <button
