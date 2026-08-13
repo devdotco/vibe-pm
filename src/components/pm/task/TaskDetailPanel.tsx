@@ -50,8 +50,8 @@ function CommentMarkdown({ content }: { content: string }) {
       components={{
         p: ({ children }) => <span style={{ display: "block", marginBottom: 8, wordBreak: "break-word", overflowWrap: "anywhere" }}>{children}</span>,
         br: () => <br />,
-        ul: ({ children }) => <ul style={{ paddingLeft: 18, margin: "6px 0" }}>{children}</ul>,
-        ol: ({ children }) => <ol style={{ paddingLeft: 18, margin: "6px 0" }}>{children}</ol>,
+        ul: ({ children }) => <ul style={{ paddingLeft: 18, margin: "6px 0", listStyleType: "disc" }}>{children}</ul>,
+        ol: ({ children }) => <ol style={{ paddingLeft: 18, margin: "6px 0", listStyleType: "decimal" }}>{children}</ol>,
         li: ({ children }) => <li style={{ margin: "3px 0" }}>{children}</li>,
         strong: ({ children }) => <strong>{children}</strong>,
         em: ({ children }) => <em>{children}</em>,
