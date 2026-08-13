@@ -971,112 +971,121 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                     </button>
                   )}
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                    {visibleFeed.map(item => (
-                <div key={item.id} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
-                  <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "var(--accent-subtle)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 600, flexShrink: 0 }}>
-                    {(item.userName ?? item.userId).slice(0, 2).toUpperCase()}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    {item._type === "comment" ? (
-                      editingCommentId === item.id ? (
-                        <div>
-                          <div style={{ border: "1px solid var(--accent)", borderRadius: "6px", overflow: "hidden" }}>
-                            <FormatToolbar textareaRef={editTextareaRef} value={editContent} onChange={setEditContent} />
-                            <textarea
-                              ref={editTextareaRef}
-                              value={editContent}
-                              onChange={e => setEditContent(e.target.value)}
-                              autoFocus
-                              onKeyDown={e => {
-                      if (e.key === "Escape") { setEditingCommentId(null); return; }
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { saveEdit(); return; }
-                      if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
-                        const el = editTextareaRef.current;
-                        if (!el) return;
-                        const cursor = el.selectionStart ?? editContent.length;
-                        const lineStart = editContent.lastIndexOf("\n", cursor - 1) + 1;
-                        const line = editContent.slice(lineStart, cursor);
-                        const bullet = line.match(/^(- )(.*)$/);
-                        const numbered = line.match(/^(\d+)\. (.*)$/);
-                        if (bullet) {
-                          e.preventDefault();
-                          if (!bullet[2]) {
-                            setEditContent(editContent.slice(0, lineStart) + editContent.slice(cursor));
-                            setTimeout(() => el.setSelectionRange(lineStart, lineStart), 0);
-                          } else {
-                            const ins = "\n- ";
-                            setEditContent(editContent.slice(0, cursor) + ins + editContent.slice(cursor));
-                            setTimeout(() => el.setSelectionRange(cursor + ins.length, cursor + ins.length), 0);
-                          }
-                        } else if (numbered) {
-                          e.preventDefault();
-                          const nextNum = parseInt(numbered[1]!) + 1;
-                          if (!numbered[2]) {
-                            setEditContent(editContent.slice(0, lineStart) + editContent.slice(cursor));
-                            setTimeout(() => el.setSelectionRange(lineStart, lineStart), 0);
-                          } else {
-                            const ins = `\n${nextNum}. `;
-                            setEditContent(editContent.slice(0, cursor) + ins + editContent.slice(cursor));
-                            setTimeout(() => el.setSelectionRange(cursor + ins.length, cursor + ins.length), 0);
-                          }
-                        }
-                      }
-                    }}
-                              style={{ width: "100%", padding: "8px 10px", border: "none", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit", minHeight: "72px", overflow: "hidden", boxSizing: "border-box" }}
-                            />
-                          </div>
-                          <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
-                            <button onClick={() => setEditingCommentId(null)} style={{ padding: "3px 10px", border: "1px solid var(--border)", borderRadius: "5px", background: "transparent", color: "var(--text-secondary)", fontSize: "12px", cursor: "pointer" }}>Cancel</button>
-                            <button onClick={saveEdit} disabled={savingEdit || !editContent.trim()} style={{ padding: "3px 10px", background: "var(--accent)", color: "white", border: "none", borderRadius: "5px", fontSize: "12px", cursor: "pointer", opacity: (savingEdit || !editContent.trim()) ? 0.6 : 1 }}>
-                              {savingEdit ? "Saving…" : "Save"}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div
-                          style={{ position: "relative" }}
-                          onMouseEnter={() => setHoveredCommentId(item.id)}
-                          onMouseLeave={() => setHoveredCommentId(null)}
-                        >
-                          <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)", overflowWrap: "break-word", wordBreak: "break-word", minWidth: 0 }}>
-                            <CommentContent content={item.content ?? ""} />
-                            {item.source === "email" && (
-                              <span title="Via email reply" style={{ marginLeft: "6px", fontSize: "11px", color: "var(--text-muted)" }}>&#128231;</span>
-                            )}
-                          </div>
-                          {hoveredCommentId === item.id && currentUserId === item.userId && (
-                            <div style={{ position: "absolute", top: 4, right: 6, display: "flex", gap: "3px" }}>
-                              <button
-                                onClick={() => { setEditingCommentId(item.id); setEditContent(item.content ?? ""); }}
-                                title="Edit"
-                                style={{ padding: "2px 6px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "4px", fontSize: "11px", cursor: "pointer", color: "var(--text-muted)" }}
-                              >✏</button>
-                              <button
-                                onClick={() => deleteComment(item.id)}
-                                title="Delete"
-                                style={{ padding: "2px 6px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "4px", fontSize: "11px", cursor: "pointer", color: "#ef4444" }}
-                              >✕</button>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    ) : (
-                      <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
-                        <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{item.userName ?? item.userId.slice(0, 8)}</span>
-                        {" "}{(ACTION_LABELS[item.action ?? ""] ?? (() => item.action ?? ""))({
+                    {visibleFeed.map(item => {
+                      if (item._type === "activity") {
+                        const firstName = (item.userName ?? item.userId).split(" ")[0];
+                        const actionText = (ACTION_LABELS[item.action ?? ""] ?? (() => item.action ?? ""))({
                           oldValue: item.oldValue,
                           newValue: item.action === "assigned" && item.newValue
                             ? (orgUsers.find(u => u.id === item.newValue)?.name ?? item.newValue.slice(0, 8))
                             : item.newValue,
-                        })}
-                      </div>
-                    )}
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px" }}>
-                      {formatDistanceToNow(parseISO(item.createdAt), { addSuffix: true })}
-                    </div>
-                  </div>
-                </div>
-                    ))}
+                        });
+                        return (
+                          <div key={item.id} style={{ display: "flex", alignItems: "center", gap: "5px", marginTop: "-4px", marginBottom: "-4px" }}>
+                            <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: "var(--border)", flexShrink: 0, marginLeft: "10px" }} />
+                            <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: 1.4 }}>
+                              <span style={{ fontWeight: 500 }}>{firstName}</span>
+                              {" "}{actionText}
+                              <span style={{ marginLeft: 5, opacity: 0.7 }}>· {formatDistanceToNow(parseISO(item.createdAt), { addSuffix: true })}</span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={item.id} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
+                          <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "var(--accent-subtle)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 600, flexShrink: 0 }}>
+                            {(item.userName ?? item.userId).slice(0, 2).toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            {editingCommentId === item.id ? (
+                              <div>
+                                <div style={{ border: "1px solid var(--accent)", borderRadius: "6px", overflow: "hidden" }}>
+                                  <FormatToolbar textareaRef={editTextareaRef} value={editContent} onChange={setEditContent} />
+                                  <textarea
+                                    ref={editTextareaRef}
+                                    value={editContent}
+                                    onChange={e => setEditContent(e.target.value)}
+                                    autoFocus
+                                    onKeyDown={e => {
+                                      if (e.key === "Escape") { setEditingCommentId(null); return; }
+                                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { saveEdit(); return; }
+                                      if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
+                                        const el = editTextareaRef.current;
+                                        if (!el) return;
+                                        const cursor = el.selectionStart ?? editContent.length;
+                                        const lineStart = editContent.lastIndexOf("\n", cursor - 1) + 1;
+                                        const line = editContent.slice(lineStart, cursor);
+                                        const bullet = line.match(/^(- )(.*)$/);
+                                        const numbered = line.match(/^(\d+)\. (.*)$/);
+                                        if (bullet) {
+                                          e.preventDefault();
+                                          if (!bullet[2]) {
+                                            setEditContent(editContent.slice(0, lineStart) + editContent.slice(cursor));
+                                            setTimeout(() => el.setSelectionRange(lineStart, lineStart), 0);
+                                          } else {
+                                            const ins = "\n- ";
+                                            setEditContent(editContent.slice(0, cursor) + ins + editContent.slice(cursor));
+                                            setTimeout(() => el.setSelectionRange(cursor + ins.length, cursor + ins.length), 0);
+                                          }
+                                        } else if (numbered) {
+                                          e.preventDefault();
+                                          const nextNum = parseInt(numbered[1]!) + 1;
+                                          if (!numbered[2]) {
+                                            setEditContent(editContent.slice(0, lineStart) + editContent.slice(cursor));
+                                            setTimeout(() => el.setSelectionRange(lineStart, lineStart), 0);
+                                          } else {
+                                            const ins = `\n${nextNum}. `;
+                                            setEditContent(editContent.slice(0, cursor) + ins + editContent.slice(cursor));
+                                            setTimeout(() => el.setSelectionRange(cursor + ins.length, cursor + ins.length), 0);
+                                          }
+                                        }
+                                      }
+                                    }}
+                                    style={{ width: "100%", padding: "8px 10px", border: "none", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit", minHeight: "72px", overflow: "hidden", boxSizing: "border-box" }}
+                                  />
+                                </div>
+                                <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
+                                  <button onClick={() => setEditingCommentId(null)} style={{ padding: "3px 10px", border: "1px solid var(--border)", borderRadius: "5px", background: "transparent", color: "var(--text-secondary)", fontSize: "12px", cursor: "pointer" }}>Cancel</button>
+                                  <button onClick={saveEdit} disabled={savingEdit || !editContent.trim()} style={{ padding: "3px 10px", background: "var(--accent)", color: "white", border: "none", borderRadius: "5px", fontSize: "12px", cursor: "pointer", opacity: (savingEdit || !editContent.trim()) ? 0.6 : 1 }}>
+                                    {savingEdit ? "Saving…" : "Save"}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div
+                                style={{ position: "relative" }}
+                                onMouseEnter={() => setHoveredCommentId(item.id)}
+                                onMouseLeave={() => setHoveredCommentId(null)}
+                              >
+                                <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)", overflowWrap: "break-word", wordBreak: "break-word", minWidth: 0 }}>
+                                  <CommentContent content={item.content ?? ""} />
+                                  {item.source === "email" && (
+                                    <span title="Via email reply" style={{ marginLeft: "6px", fontSize: "11px", color: "var(--text-muted)" }}>&#128231;</span>
+                                  )}
+                                </div>
+                                {hoveredCommentId === item.id && currentUserId === item.userId && (
+                                  <div style={{ position: "absolute", top: 4, right: 6, display: "flex", gap: "3px" }}>
+                                    <button
+                                      onClick={() => { setEditingCommentId(item.id); setEditContent(item.content ?? ""); }}
+                                      title="Edit"
+                                      style={{ padding: "2px 6px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "4px", fontSize: "11px", cursor: "pointer", color: "var(--text-muted)" }}
+                                    >✏</button>
+                                    <button
+                                      onClick={() => deleteComment(item.id)}
+                                      title="Delete"
+                                      style={{ padding: "2px 6px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "4px", fontSize: "11px", cursor: "pointer", color: "#ef4444" }}
+                                    >✕</button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px" }}>
+                              {formatDistanceToNow(parseISO(item.createdAt), { addSuffix: true })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               );
