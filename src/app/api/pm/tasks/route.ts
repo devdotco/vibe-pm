@@ -33,11 +33,11 @@ export async function POST(req: NextRequest) {
   if (!v.success) return v.response;
   const { projectId, sectionId, title, description, priority, assigneeId, dueDate, dueTime, startDate, labels, parentTaskId, estimatedMinutes } = v.data;
 
-  // get last position in section
+  // get first position in section so new tasks land at the top
   const existing = await db.select({ position: tasks.position }).from(tasks)
     .where(and(eq(tasks.projectId, projectId), sectionId ? eq(tasks.sectionId, sectionId) : isNull(tasks.sectionId), isNull(tasks.deletedAt)))
-    .orderBy(desc(tasks.position)).limit(1);
-  const position = positionBetween(existing[0]?.position ?? null, null);
+    .orderBy(asc(tasks.position)).limit(1);
+  const position = positionBetween(null, existing[0]?.position ?? null);
 
   const [task] = await db.transaction(async (tx) => {
     const [task] = await tx.insert(tasks).values({
