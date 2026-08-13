@@ -8,6 +8,39 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { formatDistanceToNow, parseISO } from "date-fns";
 
+// ── Table paste helpers ───────────────────────────────────────────────────────
+
+function rowsToMarkdownTable(rows: string[][]): string {
+  if (rows.length === 0) return "";
+  const colCount = Math.max(...rows.map(r => r.length));
+  const pad = (r: string[]) => [...r, ...Array(colCount - r.length).fill("")];
+  const fmt = (cells: string[]) => `| ${cells.join(" | ")} |`;
+  const header = pad(rows[0]!);
+  const sep = Array(colCount).fill("---");
+  const body = rows.slice(1).map(r => pad(r));
+  return [fmt(header), fmt(sep), ...body.map(fmt)].join("\n");
+}
+
+function htmlTableToMarkdown(html: string): string | null {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  const table = doc.querySelector("table");
+  if (!table) return null;
+  const rows = Array.from(table.querySelectorAll("tr")).map(tr =>
+    Array.from(tr.querySelectorAll("td, th")).map(cell =>
+      (cell.textContent ?? "").trim().replace(/\|/g, "\\|").replace(/\n/g, " ")
+    )
+  ).filter(r => r.length > 0);
+  if (rows.length === 0 || rows[0]!.length < 2) return null;
+  return rowsToMarkdownTable(rows);
+}
+
+function tsvToMarkdown(text: string): string | null {
+  const rows = text.trim().split("\n").map(r => r.split("\t").map(c => c.trim().replace(/\|/g, "\\|")));
+  if (rows.length === 0 || (rows[0]?.length ?? 0) < 2) return null;
+  return rowsToMarkdownTable(rows);
+}
+
 // ── Comment rendering ────────────────────────────────────────────────────────
 
 function CommentContent({ content }: { content: string }) {
@@ -61,6 +94,16 @@ function CommentMarkdown({ content }: { content: string }) {
           typeof href === "string" && href.startsWith("@")
             ? <strong style={{ color: "var(--accent)", fontWeight: 600 }}>{children}</strong>
             : <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "underline", wordBreak: "break-all" }}>{children}</a>,
+        table: ({ children }) => (
+          <div style={{ overflowX: "auto", margin: "6px 0" }}>
+            <table style={{ borderCollapse: "collapse", fontSize: "12px", width: "max-content", maxWidth: "100%" }}>{children}</table>
+          </div>
+        ),
+        thead: ({ children }) => <thead>{children}</thead>,
+        tbody: ({ children }) => <tbody>{children}</tbody>,
+        tr: ({ children }) => <tr>{children}</tr>,
+        th: ({ children }) => <th style={{ border: "1px solid var(--border)", padding: "4px 10px", background: "var(--bg-elevated)", fontWeight: 600, textAlign: "left", whiteSpace: "nowrap", fontSize: "11px", color: "var(--text-secondary)" }}>{children}</th>,
+        td: ({ children }) => <td style={{ border: "1px solid var(--border)", padding: "4px 10px", whiteSpace: "nowrap", color: "var(--text-primary)" }}>{children}</td>,
       }}
     >
       {processed}
@@ -466,20 +509,36 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
 
   const handleCommentPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(e.clipboardData.items);
+
+    // Image paste
     const imageItem = items.find(item => item.type.startsWith("image/"));
-    if (!imageItem) return;
-    e.preventDefault();
-    const file = imageItem.getAsFile();
-    if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file, `paste-${Date.now()}.png`);
-    setUploadingImage(true);
-    try {
-      const res = await fetch(`/api/pm/tasks/${taskId}/attachments/upload`, { method: "POST", body: formData });
-      const d = await res.json() as { attachment?: Attachment };
-      if (d.attachment) insertIntoComment(`![image](${d.attachment.url})`);
-    } finally {
-      setUploadingImage(false);
+    if (imageItem) {
+      e.preventDefault();
+      const file = imageItem.getAsFile();
+      if (!file) return;
+      const formData = new FormData();
+      formData.append("file", file, `paste-${Date.now()}.png`);
+      setUploadingImage(true);
+      try {
+        const res = await fetch(`/api/pm/tasks/${taskId}/attachments/upload`, { method: "POST", body: formData });
+        const d = await res.json() as { attachment?: Attachment };
+        if (d.attachment) insertIntoComment(`![image](${d.attachment.url})`);
+      } finally {
+        setUploadingImage(false);
+      }
+      return;
+    }
+
+    // Table paste (Google Sheets, Excel, etc.)
+    const html = e.clipboardData.getData("text/html");
+    const text = e.clipboardData.getData("text/plain");
+    if (html) {
+      const md = htmlTableToMarkdown(html);
+      if (md) { e.preventDefault(); insertIntoComment(md); return; }
+    }
+    if (text && text.includes("\t")) {
+      const md = tsvToMarkdown(text);
+      if (md) { e.preventDefault(); insertIntoComment(md); return; }
     }
   };
 
