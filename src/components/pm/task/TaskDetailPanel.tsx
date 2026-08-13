@@ -6,7 +6,6 @@ import { StatusSelect } from "@/components/pm/StatusBadge";
 import { PrioritySelect } from "@/components/pm/PriorityBadge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import remarkBreaks from "remark-breaks";
 import { formatDistanceToNow, parseISO } from "date-fns";
 
 // ── Comment rendering ────────────────────────────────────────────────────────
@@ -26,12 +25,28 @@ function CommentContent({ content }: { content: string }) {
   );
 }
 
+function addHardBreaks(text: string): string {
+  const lines = text.split("\n");
+  return lines.map((line, i) => {
+    const next = lines[i + 1];
+    if (next === undefined) return line;
+    const isList = /^(\d+\.\s+|[-*]\s+)/.test(line);
+    const nextIsList = /^(\d+\.\s+|[-*]\s+)/.test(next);
+    const empty = line.trim() === "";
+    const nextEmpty = next.trim() === "";
+    // Add GFM hard-break (two trailing spaces) only between plain non-empty lines
+    if (!isList && !nextIsList && !empty && !nextEmpty) return line + "  ";
+    return line;
+  }).join("\n");
+}
+
 function CommentMarkdown({ content }: { content: string }) {
   // Convert @Name → markdown link so we can style it in the `a` component
-  const processed = content.replace(/@(\w+)/g, "[@$1](@$1)");
+  const withMentions = content.replace(/@(\w+)/g, "[@$1](@$1)");
+  const processed = addHardBreaks(withMentions);
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkBreaks]}
+      remarkPlugins={[remarkGfm]}
       components={{
         p: ({ children }) => <span style={{ display: "block", marginBottom: 8, wordBreak: "break-word", overflowWrap: "anywhere" }}>{children}</span>,
         br: () => <br />,
