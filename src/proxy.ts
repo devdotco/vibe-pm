@@ -27,10 +27,10 @@ export function proxy(req: NextRequest) {
     );
   }
 
-  // Pass the full URL as a header so server layouts can build ?next= for expired-session redirects
-  const res = NextResponse.next();
-  res.headers.set('x-url', publicUrl);
-  return res;
+  // Pass the full URL as a request header so server layouts can build ?next= for expired-session redirects
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-url', publicUrl);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {

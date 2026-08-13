@@ -6,7 +6,18 @@ import { StatusSelect } from "@/components/pm/StatusBadge";
 import { PrioritySelect } from "@/components/pm/PriorityBadge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { formatDistanceToNow, parseISO } from "date-fns";
+import { formatDistanceToNow, parseISO, isValid } from "date-fns";
+
+function safeRelativeTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  try {
+    const d = parseISO(dateStr);
+    if (!isValid(d)) return "";
+    return formatDistanceToNow(d, { addSuffix: true });
+  } catch {
+    return "";
+  }
+}
 
 // ── Table paste helpers ───────────────────────────────────────────────────────
 
@@ -345,7 +356,9 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
 
   // Real-time updates via Pusher
   useEffect(() => {
-    const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, { cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER! });
+    const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
+    if (!pusherKey) return;
+    const pusher = new Pusher(pusherKey, { cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER ?? "us2" });
     const ch = pusher.subscribe(`task-${taskId}`);
     const refreshFeed = () => {
       fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
@@ -1041,7 +1054,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                     {visibleFeed.map(item => {
                       if (item._type === "activity") {
-                        const firstName = (item.userName ?? item.userId).split(" ")[0];
+                        const firstName = (item.userName ?? item.userId ?? "?").split(" ")[0];
                         const actionText = (ACTION_LABELS[item.action ?? ""] ?? (() => item.action ?? ""))({
                           oldValue: item.oldValue,
                           newValue: item.action === "assigned" && item.newValue
@@ -1054,7 +1067,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                             <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: 1.4 }}>
                               <span style={{ fontWeight: 500 }}>{firstName}</span>
                               {" "}{actionText}
-                              <span style={{ marginLeft: 5, opacity: 0.7 }}>· {formatDistanceToNow(parseISO(item.createdAt), { addSuffix: true })}</span>
+                              {safeRelativeTime(item.createdAt) && <span style={{ marginLeft: 5, opacity: 0.7 }}>· {safeRelativeTime(item.createdAt)}</span>}
                             </div>
                           </div>
                         );
@@ -1062,7 +1075,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                       return (
                         <div key={item.id} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
                           <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "var(--accent-subtle)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 600, flexShrink: 0 }}>
-                            {(item.userName ?? item.userId).slice(0, 2).toUpperCase()}
+                            {(item.userName ?? item.userId ?? "?").slice(0, 2).toUpperCase()}
                           </div>
                           <div style={{ flex: 1 }}>
                             {editingCommentId === item.id ? (
@@ -1148,7 +1161,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                               </div>
                             )}
                             <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px" }}>
-                              {formatDistanceToNow(parseISO(item.createdAt), { addSuffix: true })}
+                              {safeRelativeTime(item.createdAt)}
                             </div>
                           </div>
                         </div>
