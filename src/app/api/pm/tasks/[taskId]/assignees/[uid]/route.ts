@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { taskAssignees, tasks } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
+import { pusherServer, taskChannel } from '@/lib/pusher/server';
 import { eq, and } from 'drizzle-orm';
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ taskId: string; uid: string }> }) {
@@ -14,5 +15,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     await tx.delete(taskAssignees).where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.userId, uid)));
     await logActivity({ taskId, projectId: task.projectId, orgId: user.orgId, userId: user.id, action: 'unassigned', oldValue: uid }, tx);
   });
+  pusherServer.trigger(taskChannel(taskId), 'task.updated', {}).catch(() => {});
   return NextResponse.json({ success: true });
 }

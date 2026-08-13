@@ -4,7 +4,7 @@ import { tasks, projects, automations, taskAssignees, users, sections } from '@/
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { fireProjectWebhooks } from '@/lib/webhooks';
-import { pusherServer, projectChannel } from '@/lib/pusher/server';
+import { pusherServer, projectChannel, taskChannel } from '@/lib/pusher/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { sendTaskAssignedEmail } from '@/lib/email/notifications';
 
@@ -64,6 +64,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
   });
 
   pusherServer.trigger(projectChannel(existing.projectId, user.orgId), 'task.updated', { task }).catch(() => {});
+  pusherServer.trigger(taskChannel(taskId), 'task.updated', { task }).catch(() => {});
 
   // email notification: assignee changed
   if (body.assigneeId !== undefined && body.assigneeId !== existing.assigneeId && body.assigneeId) {

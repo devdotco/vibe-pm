@@ -5,6 +5,7 @@ import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { eq, and } from 'drizzle-orm';
 import { sendTaskAssignedEmail } from '@/lib/email/notifications';
+import { pusherServer, taskChannel } from '@/lib/pusher/server';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   const user = await requireUser();
@@ -48,5 +49,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
       }).catch(() => {});
   }
 
+  pusherServer.trigger(taskChannel(taskId), 'task.updated', {}).catch(() => {});
   return NextResponse.json({ assignee }, { status: 201 });
 }

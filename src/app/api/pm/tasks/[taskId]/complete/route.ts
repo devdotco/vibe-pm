@@ -4,7 +4,7 @@ import { tasks, sections } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { dispatchEvent } from '@/lib/webhooks/dispatcher';
-import { pusherServer, projectChannel } from '@/lib/pusher/server';
+import { pusherServer, projectChannel, taskChannel } from '@/lib/pusher/server';
 import { eq, and, isNull } from 'drizzle-orm';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
@@ -36,5 +36,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ta
 
   dispatchEvent({ eventType: 'task.completed', orgId: user.orgId, projectId: existing.projectId, taskId, triggeredBy: user.id, data: { title: existing.title } });
   pusherServer.trigger(projectChannel(existing.projectId, user.orgId), 'task.updated', { task }).catch(() => {});
+  pusherServer.trigger(taskChannel(taskId), 'task.updated', { task }).catch(() => {});
   return NextResponse.json({ task });
 }

@@ -15,3 +15,7 @@ export function projectChannel(projectId: string, orgId: string) {
 export function channelChannel(channelId: string, orgId: string) {
   return `org-${orgId}-channel-${channelId}`;
 }
+
+export function taskChannel(taskId: string) {
+  return `task-${taskId}`;
+}

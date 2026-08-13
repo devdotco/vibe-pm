@@ -300,13 +300,22 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     return () => document.removeEventListener("mousedown", h);
   }, [showAssigneePicker]);
 
-  // Real-time: refresh feed when an email reply lands via inbound webhook
+  // Real-time updates via Pusher
   useEffect(() => {
     const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, { cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER! });
     const ch = pusher.subscribe(`task-${taskId}`);
-    ch.bind('task.comment', () => {
+    const refreshFeed = () => {
       fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
-    });
+    };
+    const refreshAll = () => {
+      fetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => {
+        if (d.task) setTask(d.task);
+      });
+      fetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json()).then(d => setAssignees(d.assignees ?? []));
+      refreshFeed();
+    };
+    ch.bind('task.comment', refreshFeed);
+    ch.bind('task.updated', refreshAll);
     return () => { pusher.unsubscribe(`task-${taskId}`); pusher.disconnect(); };
   }, [taskId]);
 

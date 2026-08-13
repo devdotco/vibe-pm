@@ -8,6 +8,7 @@ import { sendTaskCommentEmail, sendTaskMentionEmail } from '@/lib/email/notifica
 import { validate, CommentSchema } from '@/lib/validate';
 import { rateLimit } from '@/lib/rate-limit';
 import { autoWatch } from '@/lib/watchers';
+import { pusherServer, taskChannel } from '@/lib/pusher/server';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   const user = await requireUser();
@@ -37,6 +38,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
     await autoWatch(taskId, user.orgId, user.id, tx);
     return [c];
   });
+
+  pusherServer.trigger(taskChannel(taskId), 'task.comment', { commentId: comment.id }).catch(() => {});
 
   // fire-and-forget email notifications
   (async () => {
