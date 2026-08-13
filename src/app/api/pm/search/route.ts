@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       .innerJoin(tasks, eq(taskComments.taskId, tasks.id))
       .innerJoin(projects, eq(tasks.projectId, projects.id))
       .where(and(eq(taskComments.orgId, user.orgId), isNull(taskComments.deletedAt), ilike(taskComments.content, `%${q}%`)))
-      .orderBy(desc(taskComments.updatedAt))
+      .orderBy(desc(taskComments.createdAt))
       .limit(25);
     return NextResponse.json({ results });
   }
