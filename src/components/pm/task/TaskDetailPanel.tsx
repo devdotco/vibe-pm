@@ -56,6 +56,7 @@ function CommentMarkdown({ content }: { content: string }) {
         strong: ({ children }) => <strong>{children}</strong>,
         em: ({ children }) => <em>{children}</em>,
         code: ({ children }) => <code style={{ background: "rgba(0,0,0,0.07)", padding: "1px 4px", borderRadius: 3, fontSize: "12px", fontFamily: "monospace" }}>{children}</code>,
+        img: ({ src, alt }) => <img src={src} alt={alt ?? ""} style={{ maxWidth: "100%", borderRadius: 6, marginTop: 4, display: "block" }} />,
         a: ({ href, children }) =>
           typeof href === "string" && href.startsWith("@")
             ? <strong style={{ color: "var(--accent)", fontWeight: 600 }}>{children}</strong>
@@ -250,8 +251,10 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const [editContent, setEditContent] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const commentFileRef = useRef<HTMLInputElement>(null);
   const assigneePickerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -443,6 +446,53 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     const d = await res.json() as { attachment?: Attachment };
     if (d.attachment) setAttachments(prev => [...prev, d.attachment!]);
     e.target.value = "";
+  };
+
+  const insertIntoComment = (md: string) => {
+    const el = textareaRef.current;
+    const cursor = el?.selectionStart ?? comment.length;
+    setComment(prev => prev.slice(0, cursor) + md + prev.slice(cursor));
+    setTimeout(() => { el?.focus(); el?.setSelectionRange(cursor + md.length, cursor + md.length); }, 0);
+  };
+
+  const handleCommentPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData.items);
+    const imageItem = items.find(item => item.type.startsWith("image/"));
+    if (!imageItem) return;
+    e.preventDefault();
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file, `paste-${Date.now()}.png`);
+    setUploadingImage(true);
+    try {
+      const res = await fetch(`/api/pm/tasks/${taskId}/attachments/upload`, { method: "POST", body: formData });
+      const d = await res.json() as { attachment?: Attachment };
+      if (d.attachment) insertIntoComment(`![image](${d.attachment.url})`);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleCommentFileAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    setUploadingImage(true);
+    try {
+      const res = await fetch(`/api/pm/tasks/${taskId}/attachments/upload`, { method: "POST", body: formData });
+      const d = await res.json() as { attachment?: Attachment };
+      if (d.attachment) {
+        const md = file.type.startsWith("image/")
+          ? `![${file.name}](${d.attachment.url})`
+          : `[${file.name}](${d.attachment.url})`;
+        insertIntoComment(md);
+      }
+    } finally {
+      setUploadingImage(false);
+      e.target.value = "";
+    }
   };
 
   if (!task) return (
@@ -712,7 +762,17 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
             </div>
             {markdownPreview ? (
               <div style={{ fontSize: "14px", color: "var(--text-primary)", minHeight: "60px", overflowWrap: "break-word", wordBreak: "break-word" }}>
-                {task.description ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{task.description}</ReactMarkdown> : <span style={{ color: "var(--text-muted)" }}>No description</span>}
+                {task.description ? (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "underline", wordBreak: "break-all" }}>{children}</a>,
+                      img: ({ src, alt }) => <img src={src} alt={alt ?? ""} style={{ maxWidth: "100%", borderRadius: 6, marginTop: 4, display: "block" }} />,
+                    }}
+                  >
+                    {task.description}
+                  </ReactMarkdown>
+                ) : <span style={{ color: "var(--text-muted)" }}>No description</span>}
               </div>
             ) : (
               <textarea value={task.description ?? ""} onChange={e => save({ description: e.target.value })}
@@ -891,16 +951,27 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
           {/* Activity feed */}
           <div style={{ padding: "16px 20px" }}>
             <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "12px" }}>Activity</div>
-            {feed.length > 3 && (
-              <button
-                onClick={() => setShowAllFeed(v => !v)}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: "13px", padding: "0 0 10px 0", display: "block" }}
-              >
-                {showAllFeed ? "Hide earlier comments" : `Show ${feed.length - 3} earlier comment${feed.length - 3 === 1 ? "" : "s"}`}
-              </button>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {(showAllFeed ? feed : feed.slice(-3)).map(item => (
+            {(() => {
+              const comments = feed.filter(f => f._type === "comment");
+              const hiddenCount = Math.max(0, comments.length - 3);
+              const visibleCommentIds = new Set(
+                (showAllFeed ? comments : comments.slice(-3)).map(c => c.id)
+              );
+              const visibleFeed = showAllFeed
+                ? feed
+                : feed.filter(f => f._type === "activity" || visibleCommentIds.has(f.id));
+              return (
+                <>
+                  {hiddenCount > 0 && (
+                    <button
+                      onClick={() => setShowAllFeed(v => !v)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: "13px", padding: "0 0 10px 0", display: "block" }}
+                    >
+                      {showAllFeed ? "Hide earlier comments" : `Show ${hiddenCount} earlier comment${hiddenCount === 1 ? "" : "s"}`}
+                    </button>
+                  )}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {visibleFeed.map(item => (
                 <div key={item.id} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
                   <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "var(--accent-subtle)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 600, flexShrink: 0 }}>
                     {(item.userName ?? item.userId).slice(0, 2).toUpperCase()}
@@ -1005,15 +1076,20 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
             <div style={{ marginTop: "16px" }}>
+              <input ref={commentFileRef} type="file" style={{ display: "none" }} onChange={handleCommentFileAttach} />
               <div style={{ position: "relative" }}>
                 <div style={{ border: `1px solid ${commentError ? "#ef4444" : "var(--border)"}`, borderRadius: "6px", overflow: "hidden" }}>
                   <FormatToolbar textareaRef={textareaRef} value={comment} onChange={setComment} />
                   <textarea
                     ref={textareaRef}
                     value={comment}
+                    onPaste={handleCommentPaste}
                     onChange={e => {
                       const val = e.target.value;
                       setComment(val);
@@ -1107,8 +1183,20 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                 )}
               </div>
               {commentError && <div style={{ fontSize: "12px", color: "#ef4444", marginTop: "4px" }}>{commentError}</div>}
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "6px" }}>
-                <button onClick={postComment} disabled={!comment.trim() || postingComment} style={{ padding: "6px 14px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer", opacity: (comment.trim() && !postingComment) ? 1 : 0.5 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <button
+                    type="button"
+                    onClick={() => commentFileRef.current?.click()}
+                    disabled={uploadingImage}
+                    title="Attach file or image"
+                    style={{ padding: "5px 8px", border: "1px solid var(--border)", borderRadius: "6px", background: "none", cursor: "pointer", fontSize: "14px", color: "var(--text-muted)", opacity: uploadingImage ? 0.5 : 1 }}
+                  >
+                    📎
+                  </button>
+                  {uploadingImage && <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Uploading…</span>}
+                </div>
+                <button onClick={postComment} disabled={!comment.trim() || postingComment || uploadingImage} style={{ padding: "6px 14px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer", opacity: (comment.trim() && !postingComment && !uploadingImage) ? 1 : 0.5 }}>
                   {postingComment ? "Posting…" : "Post"}
                 </button>
               </div>
