@@ -68,11 +68,17 @@ function applyFormat(
   const sel = value.slice(start, end);
 
   if (fmt === "bullet" || fmt === "numbered") {
+    // Expand to full lines covering the selection
     const lineStart = value.lastIndexOf("\n", start - 1) + 1;
-    const prefix = fmt === "bullet" ? "- " : "1. ";
-    const next = value.slice(0, lineStart) + prefix + value.slice(lineStart);
-    onChange(next);
-    setTimeout(() => { el.focus(); el.setSelectionRange(end + prefix.length, end + prefix.length); }, 0);
+    const lineEndIdx = value.indexOf("\n", end);
+    const blockEnd = lineEndIdx === -1 ? value.length : lineEndIdx;
+    const lines = value.slice(lineStart, blockEnd).split("\n");
+    const prefixed = lines
+      .map((l, i) => fmt === "bullet" ? `- ${l}` : `${i + 1}. ${l}`)
+      .join("\n");
+    onChange(value.slice(0, lineStart) + prefixed + value.slice(blockEnd));
+    const newEnd = lineStart + prefixed.length;
+    setTimeout(() => { el.focus(); el.setSelectionRange(lineStart, newEnd); }, 0);
     return;
   }
 
@@ -234,6 +240,12 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const autoResize = (el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 480) + "px";
+  };
+
   const loadAll = useCallback(() => {
     fetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => {
       setTask(d.task);
@@ -255,6 +267,8 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => { autoResize(textareaRef.current); }, [comment]);
+  useEffect(() => { autoResize(editTextareaRef.current); }, [editContent]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") { if (showAssigneePicker) { setShowAssigneePicker(false); } else { onClose(); } } };
     window.addEventListener("keydown", h);
@@ -885,7 +899,6 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                               ref={editTextareaRef}
                               value={editContent}
                               onChange={e => setEditContent(e.target.value)}
-                              rows={4}
                               autoFocus
                               onKeyDown={e => {
                       if (e.key === "Escape") { setEditingCommentId(null); return; }
@@ -922,7 +935,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                         }
                       }
                     }}
-                              style={{ width: "100%", padding: "8px 10px", border: "none", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit" }}
+                              style={{ width: "100%", padding: "8px 10px", border: "none", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit", minHeight: "72px", overflow: "hidden", boxSizing: "border-box" }}
                             />
                           </div>
                           <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
@@ -1036,8 +1049,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                       }
                     }}
                     placeholder="Add a comment… (⌘Enter to post)"
-                    rows={3}
-                    style={{ width: "100%", padding: "8px 10px", border: "none", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit" }}
+                    style={{ width: "100%", padding: "8px 10px", border: "none", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit", minHeight: "72px", overflow: "hidden", boxSizing: "border-box" }}
                   />
                 </div>
                 {mentionQuery !== null && (
