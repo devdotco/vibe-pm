@@ -6,6 +6,7 @@ import { StatusSelect } from "@/components/pm/StatusBadge";
 import { PrioritySelect } from "@/components/pm/PriorityBadge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import { formatDistanceToNow, parseISO } from "date-fns";
 
 // ── Comment rendering ────────────────────────────────────────────────────────
@@ -30,10 +31,10 @@ function CommentMarkdown({ content }: { content: string }) {
   const processed = content.replace(/@(\w+)/g, "[@$1](@$1)");
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
         p: ({ children }) => <span style={{ display: "block", marginBottom: 8, wordBreak: "break-word", overflowWrap: "anywhere" }}>{children}</span>,
-        br: () => <span style={{ display: "block", height: "6px" }} />,
+        br: () => <br />,
         ul: ({ children }) => <ul style={{ paddingLeft: 18, margin: "6px 0" }}>{children}</ul>,
         ol: ({ children }) => <ol style={{ paddingLeft: 18, margin: "6px 0" }}>{children}</ol>,
         li: ({ children }) => <li style={{ margin: "3px 0" }}>{children}</li>,
