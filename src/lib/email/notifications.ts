@@ -11,6 +11,56 @@ const REPLY_DOMAIN = process.env.EMAIL_REPLY_DOMAIN ?? 'reply.vb.co';
 const REPLY_SECRET = process.env.EMAIL_REPLY_SECRET ?? 'dev-secret';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://pm.vb.co';
 
+function escapeHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function formatCommentHtml(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let inUl = false;
+  let inOl = false;
+
+  const closeList = () => {
+    if (inUl) { out.push("</ul>"); inUl = false; }
+    if (inOl) { out.push("</ol>"); inOl = false; }
+  };
+
+  const linkify = (s: string) =>
+    escapeHtml(s).replace(
+      /https?:\/\/[^\s<>"]+/g,
+      url => `<a href="${url}" style="color:#2f5cff">${url}</a>`
+    );
+
+  const inlineFormat = (s: string) =>
+    linkify(s)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/@(\w+)/g, '<strong style="color:#2f5cff">@$1</strong>');
+
+  for (const raw of lines) {
+    const bullet = raw.match(/^[-*]\s+(.*)$/);
+    const numbered = raw.match(/^\d+\.\s+(.*)$/);
+    if (bullet) {
+      if (!inUl) { closeList(); out.push('<ul style="margin:6px 0;padding-left:20px">'); inUl = true; }
+      out.push(`<li style="margin:2px 0">${inlineFormat(bullet[1]!)}</li>`);
+    } else if (numbered) {
+      if (!inOl) { closeList(); out.push('<ol style="margin:6px 0;padding-left:20px">'); inOl = true; }
+      out.push(`<li style="margin:2px 0">${inlineFormat(numbered[1]!)}</li>`);
+    } else {
+      closeList();
+      const trimmed = raw.trim();
+      if (trimmed === "") {
+        out.push('<br>');
+      } else {
+        out.push(`<p style="margin:4px 0;word-break:break-word">${inlineFormat(raw)}</p>`);
+      }
+    }
+  }
+  closeList();
+  return out.join("\n");
+}
+
 function replyToken(type: string, entityId: string, recipientEmail: string) {
   return crypto.createHmac('sha256', REPLY_SECRET)
     .update(`${type}:${entityId}:${recipientEmail}`)
@@ -112,7 +162,7 @@ export async function sendTaskMentionEmail(data: TaskNotificationData) {
       <p style="color:#666;margin-bottom:16px">${data.actorName} mentioned you in <strong>${data.projectName}</strong>:</p>
       <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px">
         <strong style="font-size:16px;display:block;margin-bottom:8px">${data.taskTitle}</strong>
-        ${data.commentText ? `<p style="color:#374151;margin:0">${data.commentText}</p>` : ''}
+        ${data.commentText ? `<div style="color:#374151;font-size:14px;line-height:1.6">${formatCommentHtml(data.commentText)}</div>` : ''}
       </div>
       <a href="${url}" style="display:inline-block;background:#2f5cff;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
       <p style="color:#9ca3af;font-size:12px;margin-top:24px">Reply to this email to respond without logging in.</p>
@@ -132,7 +182,7 @@ export async function sendTaskCommentEmail(data: TaskNotificationData) {
       <p style="color:#666;margin-bottom:16px">${data.actorName} commented on a task in <strong>${data.projectName}</strong>:</p>
       <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px">
         <strong style="font-size:16px;display:block;margin-bottom:8px">${data.taskTitle}</strong>
-        ${data.commentText ? `<blockquote style="border-left:3px solid #2f5cff;padding-left:12px;color:#374151;margin:0">${data.commentText}</blockquote>` : ''}
+        ${data.commentText ? `<blockquote style="border-left:3px solid #2f5cff;padding-left:12px;color:#374151;margin:0;font-size:14px;line-height:1.6">${formatCommentHtml(data.commentText)}</blockquote>` : ''}
       </div>
       <a href="${url}" style="display:inline-block;background:#2f5cff;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
       <p style="color:#9ca3af;font-size:12px;margin-top:24px">Reply to this email to respond without logging in.</p>

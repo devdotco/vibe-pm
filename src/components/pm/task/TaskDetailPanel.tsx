@@ -5,6 +5,7 @@ import { Skeleton, SkeletonText, SkeletonAvatar } from "@/components/ui/Skeleton
 import { StatusSelect } from "@/components/pm/StatusBadge";
 import { PrioritySelect } from "@/components/pm/PriorityBadge";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { formatDistanceToNow, parseISO } from "date-fns";
 
 // ── Comment rendering ────────────────────────────────────────────────────────
@@ -29,8 +30,9 @@ function CommentMarkdown({ content }: { content: string }) {
   const processed = content.replace(/@(\w+)/g, "[@$1](@$1)");
   return (
     <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
       components={{
-        p: ({ children }) => <span style={{ display: "block", marginBottom: 8 }}>{children}</span>,
+        p: ({ children }) => <span style={{ display: "block", marginBottom: 8, wordBreak: "break-word", overflowWrap: "anywhere" }}>{children}</span>,
         br: () => <span style={{ display: "block", height: "6px" }} />,
         ul: ({ children }) => <ul style={{ paddingLeft: 18, margin: "6px 0" }}>{children}</ul>,
         ol: ({ children }) => <ol style={{ paddingLeft: 18, margin: "6px 0" }}>{children}</ol>,
@@ -41,7 +43,7 @@ function CommentMarkdown({ content }: { content: string }) {
         a: ({ href, children }) =>
           typeof href === "string" && href.startsWith("@")
             ? <strong style={{ color: "var(--accent)", fontWeight: 600 }}>{children}</strong>
-            : <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "underline" }}>{children}</a>,
+            : <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "underline", wordBreak: "break-all" }}>{children}</a>,
       }}
     >
       {processed}
@@ -51,7 +53,7 @@ function CommentMarkdown({ content }: { content: string }) {
 
 // ── Formatting toolbar ────────────────────────────────────────────────────────
 
-type FmtType = "bold" | "italic" | "underline" | "bullet" | "numbered";
+type FmtType = "bold" | "italic" | "underline" | "bullet" | "numbered" | "link";
 
 function applyFormat(
   fmt: FmtType,
@@ -74,6 +76,19 @@ function applyFormat(
     return;
   }
 
+  if (fmt === "link") {
+    const isUrl = sel.startsWith("http");
+    const insert = sel
+      ? (isUrl ? `[${sel}](${sel})` : `[${sel}](https://)`)
+      : "[link text](https://)";
+    const cursorPos = sel
+      ? (isUrl ? start + insert.length : start + sel.length + 3)
+      : start + 12;
+    onChange(value.slice(0, start) + insert + value.slice(end));
+    setTimeout(() => { el.focus(); el.setSelectionRange(cursorPos, cursorPos + (sel && !isUrl ? 8 : 0)); }, 0);
+    return;
+  }
+
   const map: Record<string, [string, string, string]> = {
     bold:      ["**", "**", "bold text"],
     italic:    ["*",  "*",  "italic text"],
@@ -92,6 +107,7 @@ const FMT_BUTTONS: { fmt: FmtType; label: string; title: string; style?: React.C
   { fmt: "underline", label: "U",  title: "Underline",     style: { textDecoration: "underline" } },
   { fmt: "bullet",    label: "•",  title: "Bullet list",   style: { fontSize: 16 } },
   { fmt: "numbered",  label: "1.", title: "Numbered list", style: { fontSize: 11 } },
+  { fmt: "link",      label: "🔗", title: "Insert link",   style: { fontSize: 13 } },
 ];
 
 function FormatToolbar({ textareaRef, value, onChange }: {
@@ -665,8 +681,8 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
               </button>
             </div>
             {markdownPreview ? (
-              <div style={{ fontSize: "14px", color: "var(--text-primary)", minHeight: "60px" }}>
-                {task.description ? <ReactMarkdown>{task.description}</ReactMarkdown> : <span style={{ color: "var(--text-muted)" }}>No description</span>}
+              <div style={{ fontSize: "14px", color: "var(--text-primary)", minHeight: "60px", overflowWrap: "break-word", wordBreak: "break-word" }}>
+                {task.description ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{task.description}</ReactMarkdown> : <span style={{ color: "var(--text-muted)" }}>No description</span>}
               </div>
             ) : (
               <textarea value={task.description ?? ""} onChange={e => save({ description: e.target.value })}
@@ -871,7 +887,41 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                               onChange={e => setEditContent(e.target.value)}
                               rows={4}
                               autoFocus
-                              onKeyDown={e => { if (e.key === "Escape") setEditingCommentId(null); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveEdit(); }}
+                              onKeyDown={e => {
+                      if (e.key === "Escape") { setEditingCommentId(null); return; }
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { saveEdit(); return; }
+                      if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
+                        const el = editTextareaRef.current;
+                        if (!el) return;
+                        const cursor = el.selectionStart ?? editContent.length;
+                        const lineStart = editContent.lastIndexOf("\n", cursor - 1) + 1;
+                        const line = editContent.slice(lineStart, cursor);
+                        const bullet = line.match(/^(- )(.*)$/);
+                        const numbered = line.match(/^(\d+)\. (.*)$/);
+                        if (bullet) {
+                          e.preventDefault();
+                          if (!bullet[2]) {
+                            setEditContent(editContent.slice(0, lineStart) + editContent.slice(cursor));
+                            setTimeout(() => el.setSelectionRange(lineStart, lineStart), 0);
+                          } else {
+                            const ins = "\n- ";
+                            setEditContent(editContent.slice(0, cursor) + ins + editContent.slice(cursor));
+                            setTimeout(() => el.setSelectionRange(cursor + ins.length, cursor + ins.length), 0);
+                          }
+                        } else if (numbered) {
+                          e.preventDefault();
+                          const nextNum = parseInt(numbered[1]!) + 1;
+                          if (!numbered[2]) {
+                            setEditContent(editContent.slice(0, lineStart) + editContent.slice(cursor));
+                            setTimeout(() => el.setSelectionRange(lineStart, lineStart), 0);
+                          } else {
+                            const ins = `\n${nextNum}. `;
+                            setEditContent(editContent.slice(0, cursor) + ins + editContent.slice(cursor));
+                            setTimeout(() => el.setSelectionRange(cursor + ins.length, cursor + ins.length), 0);
+                          }
+                        }
+                      }
+                    }}
                               style={{ width: "100%", padding: "8px 10px", border: "none", fontSize: "13px", background: "var(--bg)", color: "var(--text-primary)", resize: "none", outline: "none", fontFamily: "inherit" }}
                             />
                           </div>
@@ -888,7 +938,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                           onMouseEnter={() => setHoveredCommentId(item.id)}
                           onMouseLeave={() => setHoveredCommentId(null)}
                         >
-                          <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)" }}>
+                          <div style={{ background: "var(--panel-hover)", borderRadius: "8px", padding: "8px 10px", fontSize: "13px", color: "var(--text-primary)", overflowWrap: "break-word", wordBreak: "break-word", minWidth: 0 }}>
                             <CommentContent content={item.content ?? ""} />
                             {item.source === "email" && (
                               <span title="Via email reply" style={{ marginLeft: "6px", fontSize: "11px", color: "var(--text-muted)" }}>&#128231;</span>
@@ -953,6 +1003,37 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                     onKeyDown={e => {
                       if (e.key === "Escape") { setMentionQuery(null); return; }
                       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { postComment(); return; }
+                      if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
+                        const el = textareaRef.current;
+                        if (!el) return;
+                        const cursor = el.selectionStart ?? comment.length;
+                        const lineStart = comment.lastIndexOf("\n", cursor - 1) + 1;
+                        const line = comment.slice(lineStart, cursor);
+                        const bullet = line.match(/^(- )(.*)$/);
+                        const numbered = line.match(/^(\d+)\. (.*)$/);
+                        if (bullet) {
+                          e.preventDefault();
+                          if (!bullet[2]) {
+                            setComment(comment.slice(0, lineStart) + comment.slice(cursor));
+                            setTimeout(() => el.setSelectionRange(lineStart, lineStart), 0);
+                          } else {
+                            const ins = "\n- ";
+                            setComment(comment.slice(0, cursor) + ins + comment.slice(cursor));
+                            setTimeout(() => el.setSelectionRange(cursor + ins.length, cursor + ins.length), 0);
+                          }
+                        } else if (numbered) {
+                          e.preventDefault();
+                          const nextNum = parseInt(numbered[1]!) + 1;
+                          if (!numbered[2]) {
+                            setComment(comment.slice(0, lineStart) + comment.slice(cursor));
+                            setTimeout(() => el.setSelectionRange(lineStart, lineStart), 0);
+                          } else {
+                            const ins = `\n${nextNum}. `;
+                            setComment(comment.slice(0, cursor) + ins + comment.slice(cursor));
+                            setTimeout(() => el.setSelectionRange(cursor + ins.length, cursor + ins.length), 0);
+                          }
+                        }
+                      }
                     }}
                     placeholder="Add a comment… (⌘Enter to post)"
                     rows={3}
