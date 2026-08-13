@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { AppSwitcher } from "@/components/pm/AppSwitcher";
 import { Sidebar } from "@/components/pm/Sidebar";
 import { TopBar } from "@/components/pm/TopBar";
@@ -6,7 +7,11 @@ import { getCurrentUser } from "@/lib/auth/session";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
-  if (!user) redirect("/sign-in");
+  if (!user) {
+    const h = await headers();
+    const currentUrl = h.get("x-url");
+    redirect(currentUrl ? `/sign-in?next=${encodeURIComponent(currentUrl)}` : "/sign-in");
+  }
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg)" }}>

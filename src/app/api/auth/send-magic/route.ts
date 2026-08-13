@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
 
 function makeToken(email: string, secret: string): string {
-  const expires = Date.now() + 15 * 60 * 1000; // 15 min
+  const expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
   const payload = Buffer.from(JSON.stringify({ email, expires })).toString('base64url');
   const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
   return `${payload}.${sig}`;
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       content: [{ type: 'text/html', value: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
           <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Sign in to ViBe PM</h2>
-          <p style="color:#6c7484;margin-bottom:24px">Click the button below to sign in. This link expires in 15 minutes.</p>
+          <p style="color:#6c7484;margin-bottom:24px">Click the button below to sign in. This link expires in 24 hours.</p>
           <a href="${link}" style="display:inline-block;padding:12px 24px;background:#2f5cff;color:white;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px">Sign in</a>
           <p style="color:#9ca3af;font-size:12px;margin-top:24px">If you didn't request this, ignore this email.</p>
         </div>` }],
