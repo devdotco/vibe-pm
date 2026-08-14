@@ -10,7 +10,7 @@ interface Task {
   dueDate: string | null; assigneeId: string | null; sectionId: string | null;
   position: number; labels: string[]; completedAt: string | null;
   assignees?: Assignee[]; subtaskCount?: number; parentTaskId?: string | null;
-  commentCount?: number; attachmentCount?: number; createdAt?: string;
+  commentCount?: number; attachmentCount?: number; createdAt?: string; updatedAt?: string;
 }
 interface ProjectInfo { name: string; color: string; }
 interface ProjectListViewProps {
@@ -22,7 +22,7 @@ interface ProjectListViewProps {
   setTasks: (t: Task[]) => void;
   onTaskClick: (id: string) => void;
 }
-type SortField = "position" | "dueDate" | "priority" | "title" | "createdAt";
+type SortField = "position" | "dueDate" | "priority" | "title" | "createdAt" | "updatedAt";
 type GroupBy = "section" | "assignee" | "priority" | "status";
 interface ColVis { dueDate: boolean; collaborators: boolean; projects: boolean; visibility: boolean; }
 interface Filters { priorities: string[]; dueDates: string[]; hiddenSections: string[]; }
@@ -402,6 +402,7 @@ function ListToolbar({
     { label: "Priority", value: "priority" },
     { label: "Name (A–Z)", value: "title" },
     { label: "Date created", value: "createdAt" },
+    { label: "Last modified", value: "updatedAt" },
   ];
   const GROUP_OPT: { label: string; value: GroupBy }[] = [
     { label: "Section", value: "section" },
@@ -847,6 +848,9 @@ function applySort(tasks: Task[], sortField: SortField, sortDir: "asc" | "desc")
       cmp = a.title.localeCompare(b.title);
     } else if (sortField === "createdAt") {
       const av = a.createdAt ?? ""; const bv = b.createdAt ?? "";
+      cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    } else if (sortField === "updatedAt") {
+      const av = a.updatedAt ?? a.createdAt ?? ""; const bv = b.updatedAt ?? b.createdAt ?? "";
       cmp = av < bv ? -1 : av > bv ? 1 : 0;
     }
     return sortDir === "asc" ? cmp : -cmp;

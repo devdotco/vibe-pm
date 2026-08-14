@@ -11,7 +11,7 @@ interface TaskRow {
   task: {
     id: string; title: string; status: string; priority: string;
     dueDate: string | null; projectId: string; completedAt: string | null;
-    sectionId: string | null; parentTaskId: string | null; createdAt: string;
+    sectionId: string | null; parentTaskId: string | null; createdAt: string; updatedAt?: string;
   };
   projectName: string; projectColor: string; sectionName: string | null;
   commentCount: number; subtaskCount: number; attachmentCount?: number;
@@ -19,7 +19,7 @@ interface TaskRow {
 }
 
 type ViewTab = "list" | "board" | "calendar" | "files";
-type SortField = "default" | "dueDate" | "priority" | "title";
+type SortField = "default" | "dueDate" | "priority" | "title" | "updatedAt";
 interface Filters { priorities: string[]; dueDates: string[]; }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -143,6 +143,10 @@ function applySort(rows: TaskRow[], sortField: SortField, sortDir: "asc" | "desc
       cmp = (PRIORITY_ORDER[a.task.priority] ?? 4) - (PRIORITY_ORDER[b.task.priority] ?? 4);
     } else if (sortField === "title") {
       cmp = a.task.title.localeCompare(b.task.title);
+    } else if (sortField === "updatedAt") {
+      const av = a.task.updatedAt ?? a.task.createdAt ?? "";
+      const bv = b.task.updatedAt ?? b.task.createdAt ?? "";
+      cmp = av < bv ? -1 : av > bv ? 1 : 0;
     }
     return sortDir === "asc" ? cmp : -cmp;
   });
@@ -443,6 +447,7 @@ export default function MyTasksPage() {
     { label: "Due date", value: "dueDate" },
     { label: "Priority", value: "priority" },
     { label: "Name (A–Z)", value: "title" },
+    { label: "Last modified", value: "updatedAt" },
   ];
 
   const tbtn = (active?: boolean): React.CSSProperties => ({
