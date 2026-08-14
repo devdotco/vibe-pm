@@ -1087,7 +1087,7 @@ export function ProjectListView({
       body: JSON.stringify({ projectId, sectionId, title: newTaskTitle.trim() }),
     });
     const d = await res.json() as { task?: Task };
-    if (d.task) setTasks([...tasks, d.task]);
+    if (d.task) setTasks([d.task, ...tasks]);
     setNewTaskTitle(""); setAddingInSection(null);
   }, [newTaskTitle, projectId, tasks, setTasks]);
 

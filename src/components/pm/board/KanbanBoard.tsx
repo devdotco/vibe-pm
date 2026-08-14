@@ -287,7 +287,7 @@ export function KanbanBoard({ projectId, sections, tasks, setSections, setTasks,
       body: JSON.stringify({ projectId, sectionId, title }),
     });
     const d = await res.json();
-    if (d.task) setTasks([...tasks, d.task]);
+    if (d.task) setTasks([d.task, ...tasks]);
   };
 
   return (
