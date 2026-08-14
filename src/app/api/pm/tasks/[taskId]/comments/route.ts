@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { taskComments, tasks, taskAssignees, users, projects } from '@/lib/db/schema';
+import { taskComments, tasks, taskAssignees, users, projects, pmNotifications } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { eq, and, isNull, asc, inArray } from 'drizzle-orm';
@@ -89,6 +89,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
       };
       if (isMentioned) {
         await sendTaskMentionEmail(data).catch(() => {});
+        await db.insert(pmNotifications).values({
+          userId: recipient.id,
+          orgId: user.orgId,
+          type: 'comment.mention',
+          taskId,
+          projectId: task.projectId,
+          triggeredByUserId: user.id,
+        }).catch(() => {});
       } else {
         await sendTaskCommentEmail(data).catch(() => {});
       }

@@ -1,23 +1,28 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { formatDistanceToNow, isToday, isYesterday, parseISO } from "date-fns";
 
 interface Notification {
   id: string; type: string; taskId: string | null; projectId: string | null;
   isRead: boolean; createdAt: string; triggeredByUserId: string | null;
+  taskTitle: string | null;
 }
 
 const TYPE_ICONS: Record<string, string> = {
   "task.created": "✓", "task.completed": "✅", "task.overdue": "⚠️",
-  "task.assigned": "👤", "milestone.reached": "🏆", "comment.reaction": "👍", default: "🔔",
+  "task.assigned": "👤", "milestone.reached": "🏆", "comment.reaction": "👍",
+  "comment.mention": "@", default: "🔔",
 };
 const TYPE_LABELS: Record<string, string> = {
   "task.created": "A task was created", "task.completed": "A task was completed",
   "task.overdue": "A task is overdue", "task.assigned": "You were assigned a task",
   "milestone.reached": "A milestone was reached", "comment.reaction": "Someone liked your comment",
+  "comment.mention": "You were mentioned in a comment",
 };
 
 export default function InboxPage() {
+  const router = useRouter();
   const [notifs, setNotifs] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -36,6 +41,11 @@ export default function InboxPage() {
   const markAllRead = async () => {
     await fetch("/api/pm/notifications/read-all", { method: "PATCH" });
     setNotifs(n => n.map(x => ({ ...x, isRead: true })));
+  };
+
+  const handleClick = async (n: Notification) => {
+    if (!n.isRead) await markRead(n.id);
+    if (n.taskId) router.push(`/tasks/${n.taskId}`);
   };
 
   if (loading) return <div style={{ padding: "32px", color: "var(--text-muted)" }}>Loading...</div>;
@@ -67,18 +77,34 @@ export default function InboxPage() {
             <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 4px 8px" }}>{group}</div>
             <div style={{ background: "var(--bg-elevated)", borderRadius: "8px", border: "1px solid var(--border)", overflow: "hidden" }}>
               {items.map((n, i) => (
-                <div key={n.id} onClick={() => markRead(n.id)} style={{
+                <div key={n.id} onClick={() => handleClick(n)} style={{
                   display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px",
                   borderBottom: i < items.length - 1 ? "1px solid var(--border)" : "none",
                   background: n.isRead ? "transparent" : "var(--accent-subtle)",
-                  cursor: "pointer",
+                  cursor: n.taskId ? "pointer" : "default",
                 }}>
-                  <span style={{ fontSize: "18px", flexShrink: 0 }}>{TYPE_ICONS[n.type] ?? TYPE_ICONS.default}</span>
-                  <div style={{ flex: 1 }}>
+                  <span style={{
+                    fontSize: n.type === "comment.mention" ? "14px" : "18px",
+                    fontWeight: n.type === "comment.mention" ? 700 : 400,
+                    color: n.type === "comment.mention" ? "var(--accent)" : "inherit",
+                    flexShrink: 0,
+                    width: "24px",
+                    textAlign: "center",
+                  }}>
+                    {TYPE_ICONS[n.type] ?? TYPE_ICONS.default}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: "14px", color: "var(--text-primary)", fontWeight: n.isRead ? 400 : 500 }}>
                       {TYPE_LABELS[n.type] ?? n.type}
                     </div>
-                    {n.projectId && <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Project activity</div>}
+                    {n.taskTitle && (
+                      <div style={{ fontSize: "12px", color: n.taskId ? "var(--accent)" : "var(--text-muted)", marginTop: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {n.taskTitle}
+                      </div>
+                    )}
+                    {!n.taskTitle && n.projectId && (
+                      <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Project activity</div>
+                    )}
                   </div>
                   <span style={{ fontSize: "12px", color: "var(--text-muted)", flexShrink: 0 }}>
                     {formatDistanceToNow(parseISO(n.createdAt), { addSuffix: true })}
