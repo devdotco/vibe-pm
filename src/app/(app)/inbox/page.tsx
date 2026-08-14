@@ -9,12 +9,12 @@ interface Notification {
 
 const TYPE_ICONS: Record<string, string> = {
   "task.created": "✓", "task.completed": "✅", "task.overdue": "⚠️",
-  "task.assigned": "👤", "milestone.reached": "🏆", default: "🔔",
+  "task.assigned": "👤", "milestone.reached": "🏆", "comment.reaction": "👍", default: "🔔",
 };
 const TYPE_LABELS: Record<string, string> = {
   "task.created": "A task was created", "task.completed": "A task was completed",
   "task.overdue": "A task is overdue", "task.assigned": "You were assigned a task",
-  "milestone.reached": "A milestone was reached",
+  "milestone.reached": "A milestone was reached", "comment.reaction": "Someone liked your comment",
 };
 
 export default function InboxPage() {

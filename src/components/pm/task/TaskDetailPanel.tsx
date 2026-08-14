@@ -227,6 +227,7 @@ interface FeedItem {
   id: string; _type: "activity" | "comment"; content?: string; action?: string;
   oldValue?: string | null; newValue?: string | null; userId: string; createdAt: string;
   userName?: string | null; source?: string | null;
+  reactions?: Array<{ userId: string; userName: string | null }>;
 }
 interface SubTask {
   id: string; title: string; status: string; assigneeId: string | null; dueDate: string | null;
@@ -428,6 +429,22 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     if (!confirm("Delete this comment?")) return;
     await fetch(`/api/pm/tasks/${taskId}/comments/${id}`, { method: "DELETE" });
     setFeed(prev => prev.filter(f => f.id !== id));
+  };
+
+  const toggleReaction = async (commentId: string) => {
+    const hasReacted = feed.find(f => f.id === commentId)?.reactions?.some(r => r.userId === currentUserId);
+    setFeed(prev => prev.map(f => {
+      if (f.id !== commentId) return f;
+      const reactions = f.reactions ?? [];
+      return {
+        ...f,
+        reactions: hasReacted
+          ? reactions.filter(r => r.userId !== currentUserId)
+          : [...reactions, { userId: currentUserId!, userName: null }],
+      };
+    }));
+    await fetch(`/api/pm/tasks/${taskId}/comments/${commentId}/reactions`, { method: "POST" });
+    fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
   };
 
   const addSubtask = async () => {
@@ -1160,8 +1177,34 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                                 )}
                               </div>
                             )}
-                            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px" }}>
-                              {safeRelativeTime(item.createdAt)}
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "3px" }}>
+                              {(() => {
+                                const reactions = item.reactions ?? [];
+                                const reacted = reactions.some(r => r.userId === currentUserId);
+                                const visible = hoveredCommentId === item.id || reactions.length > 0;
+                                return (
+                                  <button
+                                    onClick={() => toggleReaction(item.id)}
+                                    title={reactions.length > 0 ? reactions.map(r => r.userName ?? "Someone").join(", ") + " liked this" : "Like"}
+                                    style={{
+                                      display: "flex", alignItems: "center", gap: "3px",
+                                      padding: "1px 6px",
+                                      background: reacted ? "var(--accent-subtle)" : "transparent",
+                                      border: `1px solid ${reacted ? "var(--accent)" : "var(--border)"}`,
+                                      borderRadius: "10px", cursor: "pointer", fontSize: "12px",
+                                      color: reacted ? "var(--accent)" : "var(--text-muted)",
+                                      opacity: visible ? 1 : 0,
+                                      transition: "opacity 0.1s",
+                                      lineHeight: 1,
+                                    }}
+                                  >
+                                    👍{reactions.length > 0 && <span style={{ marginLeft: "2px" }}>{reactions.length}</span>}
+                                  </button>
+                                );
+                              })()}
+                              <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                                {safeRelativeTime(item.createdAt)}
+                              </span>
                             </div>
                           </div>
                         </div>

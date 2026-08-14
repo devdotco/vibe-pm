@@ -385,6 +385,21 @@ export const userPreferences = pgTable("user_preferences", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// ── Comment Reactions ─────────────────────────────────────────────────────────
+
+export const commentReactions = pgTable(
+  "comment_reactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    commentId: uuid("comment_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    orgId: text("org_id").notNull(),
+    emoji: text("emoji").notNull().default("👍"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("comment_reactions_unique_idx").on(t.commentId, t.userId, t.emoji)]
+);
+
 // ── Auth tables (shared with other ViBe modules) ──────────────────────────────
 
 export const users = pgTable("users", {

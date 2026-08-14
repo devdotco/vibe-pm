@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { taskActivity, taskComments, users } from '@/lib/db/schema';
+import { taskActivity, taskComments, commentReactions, users } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
-import { eq, and, isNull, asc } from 'drizzle-orm';
+import { eq, and, isNull, asc, inArray } from 'drizzle-orm';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   const user = await requireUser();
@@ -46,10 +46,25 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tas
     .where(and(eq(taskComments.taskId, taskId), eq(taskComments.orgId, user.orgId), isNull(taskComments.deletedAt)))
     .orderBy(asc(taskComments.createdAt));
 
+  // fetch reactions for all comments in one query
+  const commentIds = commentRows.map(c => c.id);
+  const reactionRows = commentIds.length > 0
+    ? await db.select({ commentId: commentReactions.commentId, userId: commentReactions.userId, userName: users.name })
+        .from(commentReactions)
+        .leftJoin(users, eq(commentReactions.userId, users.id))
+        .where(inArray(commentReactions.commentId, commentIds))
+    : [];
+
+  const reactionsByComment: Record<string, Array<{ userId: string; userName: string | null }>> = {};
+  for (const r of reactionRows) {
+    if (!reactionsByComment[r.commentId]) reactionsByComment[r.commentId] = [];
+    reactionsByComment[r.commentId]!.push({ userId: r.userId, userName: r.userName });
+  }
+
   // merge and sort
   const feed = [
     ...activityRows.map(r => ({ ...r, _type: 'activity' as const })),
-    ...commentRows.map(r => ({ ...r, _type: 'comment' as const })),
+    ...commentRows.map(r => ({ ...r, _type: 'comment' as const, reactions: reactionsByComment[r.id] ?? [] })),
   ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   return NextResponse.json({ feed });
