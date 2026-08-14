@@ -357,7 +357,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   // Real-time updates via Pusher
   useEffect(() => {
     const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
-    if (!pusherKey) return;
+    if (!pusherKey) { console.warn('[Pusher] NEXT_PUBLIC_PUSHER_KEY is not set — real-time updates disabled'); return; }
     const pusher = new Pusher(pusherKey, { cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER ?? "us2" });
     const ch = pusher.subscribe(`task-${taskId}`);
     const refreshFeed = () => {

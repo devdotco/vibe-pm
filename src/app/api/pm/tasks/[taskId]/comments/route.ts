@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
     return [c];
   });
 
-  pusherServer.trigger(taskChannel(taskId), 'task.comment', { commentId: comment.id }).catch(() => {});
+  pusherServer.trigger(taskChannel(taskId), 'task.comment', { commentId: comment.id }).catch((err) => console.error('[Pusher] POST comment trigger failed:', err));
 
   // fire-and-forget email notifications
   (async () => {
