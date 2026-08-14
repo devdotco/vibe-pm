@@ -21,6 +21,7 @@ interface ProjectListViewProps {
   setSections: (s: Section[]) => void;
   setTasks: (t: Task[]) => void;
   onTaskClick: (id: string) => void;
+  activeTaskId?: string | null;
 }
 type SortField = "position" | "dueDate" | "priority" | "title" | "createdAt" | "updatedAt";
 type GroupBy = "section" | "assignee" | "priority" | "status";
@@ -631,13 +632,14 @@ interface TaskRowProps {
   selected: boolean;
   onToggleSelect: (id: string) => void;
   anySelected: boolean;
+  activeTaskId?: string | null;
 }
 
 function TaskRow({
   task, project, depth, cols, gridCols,
   subtasks, expanded, onToggleExpand, onToggleComplete, onTaskClick,
   addingSubtaskFor, setAddingSubtaskFor, onAddSubtask, projectId,
-  selected, onToggleSelect, anySelected,
+  selected, onToggleSelect, anySelected, activeTaskId,
 }: TaskRowProps) {
   const [hovered, setHovered] = useState(false);
   const [subtaskTitle, setSubtaskTitle] = useState("");
@@ -645,6 +647,7 @@ function TaskRow({
   const overdue = isOverdue(task.dueDate, done);
   const hasSubtasks = (task.subtaskCount ?? 0) > 0 || subtasks.length > 0;
   const showSelectBox = hovered || selected || anySelected;
+  const isActive = activeTaskId === task.id;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === " " && e.target === e.currentTarget) { e.preventDefault(); onToggleSelect(task.id); }
@@ -661,7 +664,12 @@ function TaskRow({
           display: "grid", gridTemplateColumns: gridCols,
           alignItems: "center", minHeight: "36px",
           borderBottom: "1px solid var(--border)",
-          background: selected ? "var(--accent-subtle, #eff6ff)" : hovered ? "var(--panel-hover)" : "transparent",
+          background: selected
+            ? "var(--accent-subtle, #eff6ff)"
+            : isActive
+            ? "rgba(47, 92, 255, 0.07)"
+            : hovered ? "var(--panel-hover)" : "transparent",
+          boxShadow: isActive ? "inset 3px 0 0 var(--accent)" : "none",
           paddingLeft: depth > 0 ? `${depth * 28}px` : "0",
           opacity: done ? 0.55 : 1,
           outline: "none",
@@ -808,6 +816,7 @@ function TaskRow({
           setAddingSubtaskFor={setAddingSubtaskFor}
           onAddSubtask={onAddSubtask}
           selected={selected} onToggleSelect={onToggleSelect} anySelected={anySelected}
+          activeTaskId={activeTaskId}
         />
       ))}
     </>
@@ -896,7 +905,7 @@ function buildGroups(tasks: Task[], groupBy: GroupBy, sections: Section[]): Task
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ProjectListView({
-  projectId, project, sections, tasks, setSections, setTasks, onTaskClick,
+  projectId, project, sections, tasks, setSections, setTasks, onTaskClick, activeTaskId,
 }: ProjectListViewProps) {
   // Toolbar state
   const [sortField, setSortField] = useState<SortField>("position");
@@ -1205,6 +1214,7 @@ export function ProjectListView({
                       selected={selectedTaskIds.has(task.id)}
                       onToggleSelect={toggleSelect}
                       anySelected={selectedTaskIds.size > 0}
+                      activeTaskId={activeTaskId}
                     />
                   ))}
 

@@ -267,6 +267,90 @@ function Avatar({ name, size = 24 }: { name: string; size?: number }) {
   );
 }
 
+async function gravatarUrl(email: string, size = 64): Promise<string> {
+  const data = new TextEncoder().encode(email.trim().toLowerCase());
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return `https://gravatar.com/avatar/${hex}?d=404&s=${size}`;
+}
+
+function CommentAvatar({ name, email, size = 24 }: { name: string; email?: string | null; size?: number }) {
+  const colors = ["#2f5cff", "#0d8f80", "#0f7a52", "#a6620a", "#6d4be0"];
+  const color = colors[name.charCodeAt(0) % colors.length]!;
+  const [imgSrc, setImgSrc] = useState<string | null>(null);
+  const [imgFailed, setImgFailed] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  useEffect(() => {
+    if (!email) return;
+    setImgFailed(false);
+    setImgSrc(null);
+    gravatarUrl(email, size * 2).then(setImgSrc);
+  }, [email, size]);
+
+  const initials = name.slice(0, 2).toUpperCase();
+  const showImg = imgSrc && !imgFailed;
+
+  return (
+    <div
+      style={{ position: "relative", flexShrink: 0 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div style={{
+        width: size, height: size, borderRadius: "50%",
+        background: showImg ? "transparent" : color,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: size * 0.42, fontWeight: 600, color: "white",
+        overflow: "hidden", flexShrink: 0,
+        transition: "box-shadow 0.15s",
+        boxShadow: hovered ? "0 0 0 2px var(--accent)" : "none",
+        cursor: "default",
+      }}>
+        {showImg ? (
+          <img
+            src={imgSrc!}
+            alt={name}
+            width={size}
+            height={size}
+            style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover" }}
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <span>{initials}</span>
+        )}
+      </div>
+      {hovered && (
+        <div style={{
+          position: "absolute", bottom: "calc(100% + 6px)", left: "50%",
+          transform: "translateX(-50%)",
+          background: "var(--bg-elevated)", border: "1px solid var(--border)",
+          borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+          padding: "8px 10px", zIndex: 500, minWidth: "140px", pointerEvents: "none",
+          display: "flex", alignItems: "center", gap: "8px",
+        }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: "50%",
+            background: showImg ? "transparent" : color,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 12, fontWeight: 600, color: "white", overflow: "hidden", flexShrink: 0,
+          }}>
+            {showImg ? (
+              <img src={imgSrc!} alt={name} width={32} height={32} style={{ width: 32, height: 32, objectFit: "cover" }} />
+            ) : (
+              <span>{initials}</span>
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap" }}>{name}</div>
+            {email && <div style={{ fontSize: "11px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{email}</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: () => void }) {
   const [task, setTask] = useState<Task | null>(null);
   const [feed, setFeed] = useState<FeedItem[]>([]);
@@ -1091,9 +1175,11 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                       }
                       return (
                         <div key={item.id} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
-                          <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "var(--accent-subtle)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 600, flexShrink: 0 }}>
-                            {(item.userName ?? item.userId ?? "?").slice(0, 2).toUpperCase()}
-                          </div>
+                          <CommentAvatar
+                            name={item.userName ?? item.userId ?? "?"}
+                            email={orgUsers.find(u => u.id === item.userId)?.email}
+                            size={24}
+                          />
                           <div style={{ flex: 1 }}>
                             {editingCommentId === item.id ? (
                               <div>

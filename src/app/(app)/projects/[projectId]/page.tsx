@@ -135,6 +135,7 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
             projectId={projectId} project={project} sections={sections} tasks={tasks}
             setSections={setSections} setTasks={setTasks}
             onTaskClick={handleTaskClick}
+            activeTaskId={selectedTaskId}
           />
         )}
         {view === "board" && (
