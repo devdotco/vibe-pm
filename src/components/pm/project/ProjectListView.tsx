@@ -26,7 +26,7 @@ interface ProjectListViewProps {
 type SortField = "position" | "dueDate" | "priority" | "title" | "createdAt" | "updatedAt";
 type GroupBy = "section" | "assignee" | "priority" | "status";
 interface ColVis { dueDate: boolean; collaborators: boolean; projects: boolean; visibility: boolean; }
-interface Filters { priorities: string[]; dueDates: string[]; hiddenSections: string[]; }
+interface Filters { priorities: string[]; dueDates: string[]; hiddenSections: string[]; assignees: string[]; completion: "all" | "incomplete" | "complete"; }
 interface TaskGroup { key: string; label: string; tasks: Task[]; sectionId?: string; }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -228,11 +228,13 @@ const DUEDATE_OPTIONS = [
 
 const ALL_SECTION_NAMES = ["Backlog", "To Do", "In Progress", "In Review", "Done"];
 
-function FilterPanel({ filters, sections, onFilters, onClose }: {
-  filters: Filters; sections: Section[]; onFilters: (f: Filters) => void; onClose: () => void;
+function FilterPanel({ filters, sections, taskAssignees, onFilters, onClose }: {
+  filters: Filters; sections: Section[]; taskAssignees: Assignee[];
+  onFilters: (f: Filters) => void; onClose: () => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [assigneeSearch, setAssigneeSearch] = useState("");
 
   const togglePriority = (p: string) => {
     const arr = filters.priorities;
@@ -249,12 +251,23 @@ function FilterPanel({ filters, sections, onFilters, onClose }: {
     onFilters({ ...filters, hiddenSections: arr.includes(name) ? arr.filter(v => v !== name) : [...arr, name] });
     setSaved(false);
   };
-  const hasAny = filters.priorities.length > 0 || filters.dueDates.length > 0 || filters.hiddenSections.length > 0;
+  const toggleAssignee = (id: string) => {
+    const arr = filters.assignees;
+    onFilters({ ...filters, assignees: arr.includes(id) ? arr.filter(v => v !== id) : [...arr, id] });
+  };
 
-  // Section names to show: prefer project's actual sections, fall back to standard list
+  const hasAny = filters.priorities.length > 0 || filters.dueDates.length > 0
+    || filters.hiddenSections.length > 0 || filters.assignees.length > 0
+    || filters.completion !== "all";
+
   const sectionNames = sections.length > 0
     ? [...new Set([...sections.map(s => s.name), ...ALL_SECTION_NAMES])]
     : ALL_SECTION_NAMES;
+
+  const visibleAssignees = taskAssignees.filter(a =>
+    !assigneeSearch || a.name.toLowerCase().includes(assigneeSearch.toLowerCase())
+      || a.email.toLowerCase().includes(assigneeSearch.toLowerCase())
+  );
 
   const saveDefaults = async () => {
     setSaving(true);
@@ -268,56 +281,100 @@ function FilterPanel({ filters, sections, onFilters, onClose }: {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const labelStyle: React.CSSProperties = {
+    fontSize: "11px", fontWeight: 600, color: "var(--text-muted)",
+    textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px",
+  };
+  const pill = (active: boolean, color?: string): React.CSSProperties => ({
+    padding: "2px 8px", borderRadius: "10px", fontSize: "11px", cursor: "pointer",
+    border: `1px solid ${active ? (color ?? "var(--accent)") : "var(--border)"}`,
+    background: active ? (color ? color + "33" : "var(--accent-subtle, rgba(47,92,255,0.08))") : "transparent",
+    color: active ? (color ?? "var(--accent)") : "var(--text-secondary)",
+    whiteSpace: "nowrap" as const,
+  });
+
   return (
     <div style={{
       padding: "12px 16px", background: "var(--bg-elevated)",
       borderBottom: "1px solid var(--border)",
-      display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap",
+      display: "flex", gap: "20px", alignItems: "flex-start", flexWrap: "wrap",
     }}>
-      {/* Sections */}
+      {/* Completion */}
       <div>
-        <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>Hide sections</div>
-        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
-          {sectionNames.map(name => {
-            const hidden = filters.hiddenSections.includes(name);
-            return (
-              <button key={name} onClick={() => toggleSection(name)} style={{
-                padding: "2px 8px", borderRadius: "10px", fontSize: "11px", cursor: "pointer",
-                border: `1px solid ${hidden ? "var(--accent)" : "var(--border)"}`,
-                background: hidden ? "var(--accent-subtle, rgba(47,92,255,0.08))" : "transparent",
-                color: hidden ? "var(--accent)" : "var(--text-secondary)",
-              }}>{name}</button>
-            );
-          })}
+        <div style={labelStyle}>Completion</div>
+        <div style={{ display: "flex", gap: "4px" }}>
+          {(["all", "incomplete", "complete"] as const).map(v => (
+            <button key={v} onClick={() => onFilters({ ...filters, completion: v })} style={pill(filters.completion === v)}>
+              {v === "all" ? "All" : v === "incomplete" ? "Incomplete" : "Complete"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Assignee */}
+      <div>
+        <div style={labelStyle}>Assignee</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+          <input
+            value={assigneeSearch}
+            onChange={e => setAssigneeSearch(e.target.value)}
+            placeholder="Search name or email…"
+            style={{
+              padding: "3px 8px", border: "1px solid var(--border)", borderRadius: "6px",
+              fontSize: "11px", background: "var(--bg)", color: "var(--text-primary)",
+              outline: "none", width: "160px",
+            }}
+          />
+          <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", maxWidth: "300px", maxHeight: "80px", overflowY: "auto" }}>
+            {visibleAssignees.length === 0 && (
+              <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                {taskAssignees.length === 0 ? "No assignees" : "No match"}
+              </span>
+            )}
+            {visibleAssignees.map(a => {
+              const active = filters.assignees.includes(a.id);
+              return (
+                <button key={a.id} onClick={() => toggleAssignee(a.id)} title={a.email} style={pill(active)}>
+                  {a.name || a.email}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {/* Priority */}
       <div>
-        <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>Priority</div>
+        <div style={labelStyle}>Priority</div>
         <div style={{ display: "flex", gap: "4px" }}>
           {Object.keys(PRIORITY_COLORS).map(p => (
-            <button key={p} onClick={() => togglePriority(p)} style={{
-              padding: "2px 8px", borderRadius: "10px", fontSize: "11px", cursor: "pointer",
-              border: `1px solid ${PRIORITY_COLORS[p] ?? "#9ca3af"}`,
-              background: filters.priorities.includes(p) ? (PRIORITY_COLORS[p] ?? "#9ca3af") + "33" : "transparent",
-              color: PRIORITY_COLORS[p] ?? "#9ca3af", textTransform: "capitalize",
-            }}>{p}</button>
+            <button key={p} onClick={() => togglePriority(p)} style={pill(filters.priorities.includes(p), PRIORITY_COLORS[p])}>
+              {p}
+            </button>
           ))}
         </div>
       </div>
 
       {/* Due date */}
       <div>
-        <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>Due date</div>
+        <div style={labelStyle}>Due date</div>
         <div style={{ display: "flex", gap: "4px" }}>
           {DUEDATE_OPTIONS.map(o => (
-            <button key={o.value} onClick={() => toggleDue(o.value)} style={{
-              padding: "2px 8px", borderRadius: "10px", fontSize: "11px", cursor: "pointer",
-              border: "1px solid var(--border)",
-              background: filters.dueDates.includes(o.value) ? "var(--accent-subtle, #eff6ff)" : "transparent",
-              color: filters.dueDates.includes(o.value) ? "var(--accent)" : "var(--text-secondary)",
-            }}>{o.label}</button>
+            <button key={o.value} onClick={() => toggleDue(o.value)} style={pill(filters.dueDates.includes(o.value))}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Hide sections */}
+      <div>
+        <div style={labelStyle}>Hide sections</div>
+        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+          {sectionNames.map(name => (
+            <button key={name} onClick={() => toggleSection(name)} style={pill(filters.hiddenSections.includes(name))}>
+              {name}
+            </button>
           ))}
         </div>
       </div>
@@ -342,7 +399,7 @@ function FilterPanel({ filters, sections, onFilters, onClose }: {
           </button>
         )}
         {hasAny && (
-          <button onClick={() => { onFilters({ priorities: [], dueDates: [], hiddenSections: [] }); setSaved(false); }} style={{
+          <button onClick={() => { onFilters({ priorities: [], dueDates: [], hiddenSections: [], assignees: [], completion: "all" }); setSaved(false); }} style={{
             alignSelf: "flex-start", padding: "2px 8px", fontSize: "11px",
             background: "none", border: "1px solid var(--border)", borderRadius: "4px",
             cursor: "pointer", color: "var(--text-muted)",
@@ -358,13 +415,13 @@ function FilterPanel({ filters, sections, onFilters, onClose }: {
 
 function ListToolbar({
   sortField, sortDir, onSort, groupBy, onGroup,
-  cols, onToggleCol, filters, onFilters, sections, onAddTask,
+  cols, onToggleCol, filters, onFilters, sections, taskAssignees, onAddTask,
 }: {
   sortField: SortField; sortDir: "asc" | "desc"; onSort: (f: SortField) => void;
   groupBy: GroupBy; onGroup: (g: GroupBy) => void;
   cols: ColVis; onToggleCol: (k: keyof ColVis) => void;
   filters: Filters; onFilters: (f: Filters) => void;
-  sections: Section[];
+  sections: Section[]; taskAssignees: Assignee[];
   onAddTask: () => void;
 }) {
   const [showSort, setShowSort] = useState(false);
@@ -385,7 +442,8 @@ function ListToolbar({
 
   const hasActiveSort = sortField !== "position";
   const hasActiveGroup = groupBy !== "section";
-  const activeFilterCount = filters.priorities.length + filters.dueDates.length + filters.hiddenSections.length;
+  const activeFilterCount = filters.priorities.length + filters.dueDates.length + filters.hiddenSections.length
+    + filters.assignees.length + (filters.completion !== "all" ? 1 : 0);
   const hasActiveFilter = activeFilterCount > 0;
 
   const tbtn = (active?: boolean): React.CSSProperties => ({
@@ -498,7 +556,7 @@ function ListToolbar({
       </div>
 
       {showFilter && (
-        <FilterPanel filters={filters} sections={sections} onFilters={onFilters} onClose={() => setShowFilter(false)} />
+        <FilterPanel filters={filters} sections={sections} taskAssignees={taskAssignees} onFilters={onFilters} onClose={() => setShowFilter(false)} />
       )}
     </>
   );
@@ -827,6 +885,13 @@ function TaskRow({
 
 function applyFilters(tasks: Task[], filters: Filters): Task[] {
   return tasks.filter(t => {
+    if (filters.completion === "incomplete" && t.status === "completed") return false;
+    if (filters.completion === "complete" && t.status !== "completed") return false;
+    if (filters.assignees.length > 0) {
+      const taskAssigneeIds = (t.assignees ?? []).map(a => a.id);
+      if (t.assigneeId) taskAssigneeIds.push(t.assigneeId);
+      if (!filters.assignees.some(id => taskAssigneeIds.includes(id))) return false;
+    }
     if (filters.priorities.length > 0 && !filters.priorities.includes(t.priority)) return false;
     if (filters.dueDates.length > 0) {
       const today = new Date().toISOString().slice(0, 10);
@@ -911,7 +976,7 @@ export function ProjectListView({
   const [sortField, setSortField] = useState<SortField>("position");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [groupBy, setGroupBy] = useState<GroupBy>("section");
-  const [filters, setFilters] = useState<Filters>({ priorities: [], dueDates: [], hiddenSections: [] });
+  const [filters, setFilters] = useState<Filters>({ priorities: [], dueDates: [], hiddenSections: [], assignees: [], completion: "all" });
   const [cols, setCols] = useState<ColVis>({ dueDate: true, collaborators: true, projects: true, visibility: true });
 
   // Section / task management
@@ -1105,6 +1170,16 @@ export function ProjectListView({
         cols={cols} onToggleCol={toggleCol}
         filters={filters} onFilters={setFilters}
         sections={sections}
+        taskAssignees={(() => {
+          const seen = new Set<string>();
+          const result: Assignee[] = [];
+          for (const t of tasks) {
+            for (const a of (t.assignees ?? [])) {
+              if (!seen.has(a.id)) { seen.add(a.id); result.push(a); }
+            }
+          }
+          return result.sort((a, b) => a.name.localeCompare(b.name));
+        })()}
         onAddTask={() => {
           const first = groups[0];
           if (first) { setCollapsed(c => ({ ...c, [first.key]: false })); setAddingInSection(first.key); }
