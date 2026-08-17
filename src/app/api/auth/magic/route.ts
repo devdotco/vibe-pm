@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   }
 
   const token = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
 
   await db.insert(sessions).values({
     userId: user.id,
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    expires: expiresAt,
+    maxAge: 90 * 24 * 60 * 60,
     path: '/',
     domain: process.env.COOKIE_DOMAIN ?? '.vb.co',
   });
