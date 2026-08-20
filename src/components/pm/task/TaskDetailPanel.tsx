@@ -55,18 +55,11 @@ function tsvToMarkdown(text: string): string | null {
 // ── Comment rendering ────────────────────────────────────────────────────────
 
 function CommentContent({ content }: { content: string }) {
-  // Handle <u>…</u> before ReactMarkdown (markdown has no underline syntax)
-  const segments = content.split(/(<u>[\s\S]*?<\/u>)/);
-  if (segments.length === 1) return <CommentMarkdown content={content} />;
-  return (
-    <>
-      {segments.map((seg, i) =>
-        seg.startsWith("<u>") && seg.endsWith("</u>")
-          ? <span key={i} style={{ textDecoration: "underline" }}>{seg.slice(3, -4)}</span>
-          : <CommentMarkdown key={i} content={seg} />
-      )}
-    </>
-  );
+  // Convert <u>…</u> to a markdown link with a sentinel href so the whole
+  // content is parsed as one markdown string. Splitting on <u> breaks bold/italic
+  // tokens that span the underline boundary (e.g. **<u>text</u>** → orphan **).
+  const converted = content.replace(/<u>([\s\S]*?)<\/u>/g, "[$1](u:)");
+  return <CommentMarkdown content={converted} />;
 }
 
 function addHardBreaks(text: string): string {
@@ -102,7 +95,9 @@ function CommentMarkdown({ content }: { content: string }) {
         code: ({ children }) => <code style={{ background: "rgba(0,0,0,0.07)", padding: "1px 4px", borderRadius: 3, fontSize: "12px", fontFamily: "monospace" }}>{children}</code>,
         img: ({ src, alt }) => <img src={src} alt={alt ?? ""} style={{ maxWidth: "100%", borderRadius: 6, marginTop: 4, display: "block" }} />,
         a: ({ href, children }) =>
-          typeof href === "string" && href.startsWith("@")
+          href === "u:"
+            ? <span style={{ textDecoration: "underline" }}>{children}</span>
+            : typeof href === "string" && href.startsWith("@")
             ? <strong style={{ color: "var(--accent)", fontWeight: 600 }}>{children}</strong>
             : <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "underline", wordBreak: "break-all" }}>{children}</a>,
         table: ({ children }) => (
@@ -391,10 +386,14 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const [savingEdit, setSavingEdit] = useState(false);
   const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [showMoveProjectPicker, setShowMoveProjectPicker] = useState(false);
+  const [orgProjects, setOrgProjects] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [movingProject, setMovingProject] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const commentFileRef = useRef<HTMLInputElement>(null);
   const assigneePickerRef = useRef<HTMLDivElement>(null);
+  const moveProjectRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -422,6 +421,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   useEffect(() => {
     fetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
     fetch("/api/pm/me").then(r => r.json()).then(d => setCurrentUserId(d.id ?? null)).catch(() => {});
+    fetch("/api/pm/projects").then(r => r.json()).then(d => setOrgProjects(d.projects ?? []));
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -438,6 +438,13 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [showAssigneePicker]);
+
+  useEffect(() => {
+    if (!showMoveProjectPicker) return;
+    const h = (e: MouseEvent) => { if (moveProjectRef.current && !moveProjectRef.current.contains(e.target as Node)) setShowMoveProjectPicker(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [showMoveProjectPicker]);
 
   // Real-time updates via Pusher
   useEffect(() => {
@@ -469,6 +476,23 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
       fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
     }, 500);
   }, [task, taskId]);
+
+  const moveToProject = async (targetProjectId: string) => {
+    setMovingProject(true);
+    try {
+      const res = await fetch(`/api/pm/tasks/${taskId}/move-project`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: targetProjectId }),
+      });
+      if (res.ok) {
+        setShowMoveProjectPicker(false);
+        onClose();
+      }
+    } finally {
+      setMovingProject(false);
+    }
+  };
 
   const postComment = async () => {
     if (!comment.trim() || postingComment) return;
@@ -745,6 +769,39 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
             <span style={{ fontSize: "14px" }}>{watching ? "👁" : "👁‍🗨"}</span>
             <span>{watching ? "Watching" : "Watch"}</span>
           </button>
+          <div ref={moveProjectRef} style={{ position: "relative", flexShrink: 0 }}>
+            <button
+              onClick={() => setShowMoveProjectPicker(v => !v)}
+              title="Move to another project"
+              style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", cursor: "pointer", color: "var(--text-muted)", fontSize: "12px", padding: "3px 8px", display: "flex", alignItems: "center", gap: "4px" }}
+            >
+              <span>→</span>
+              <span>Move</span>
+            </button>
+            {showMoveProjectPicker && (
+              <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", width: "220px", overflow: "hidden" }}>
+                <div style={{ padding: "8px 12px", fontSize: "11px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", borderBottom: "1px solid var(--border)" }}>Move to Project</div>
+                <div style={{ maxHeight: "240px", overflowY: "auto" }}>
+                  {orgProjects.filter(p => p.id !== task.projectId).map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => moveToProject(p.id)}
+                      disabled={movingProject}
+                      style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", color: "var(--text-primary)", fontSize: "13px", textAlign: "left", opacity: movingProject ? 0.6 : 1 }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "var(--panel-hover)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                    >
+                      <span style={{ width: 10, height: 10, borderRadius: "50%", background: p.color, flexShrink: 0, display: "inline-block" }} />
+                      {p.name}
+                    </button>
+                  ))}
+                  {orgProjects.filter(p => p.id !== task.projectId).length === 0 && (
+                    <div style={{ padding: "12px", fontSize: "12px", color: "var(--text-muted)", textAlign: "center" }}>No other projects</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "20px", lineHeight: 1, padding: "0 2px" }}>×</button>
         </div>
 
