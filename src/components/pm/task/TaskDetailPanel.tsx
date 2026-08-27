@@ -66,6 +66,18 @@ function isTableRow(line: string): boolean {
   return /^\s*\|/.test(line);
 }
 
+// When users bold/italic an entire table row (e.g. **| col | col |**), move the
+// inline markers inside each cell so remark-gfm can still parse the row as a table.
+function normalizeBoldTableRows(text: string): string {
+  return text.replace(
+    /^(\*\*|__|\*|_)\|(.+)\|(\*\*|__|\*|_)$/gm,
+    (_match, open, inner, _close) => {
+      const cells = inner.split("|").map((c: string) => `${open}${c.trim()}${open}`);
+      return "| " + cells.join(" | ") + " |";
+    }
+  );
+}
+
 function isSeparatorRow(line: string): boolean {
   return /^\s*\|[\s\-:|]+\|/.test(line) && /[-]/.test(line);
 }
@@ -113,7 +125,7 @@ function addHardBreaks(text: string): string {
 function CommentMarkdown({ content }: { content: string }) {
   // Convert @Name → markdown link so we can style it in the `a` component
   const withMentions = content.replace(/@(\w+)/g, "[@$1](@$1)");
-  const processed = addHardBreaks(injectTableSeparators(withMentions));
+  const processed = addHardBreaks(injectTableSeparators(normalizeBoldTableRows(withMentions)));
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
