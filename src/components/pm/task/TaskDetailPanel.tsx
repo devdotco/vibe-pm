@@ -62,6 +62,37 @@ function CommentContent({ content }: { content: string }) {
   return <CommentMarkdown content={converted} />;
 }
 
+function isTableRow(line: string): boolean {
+  return /^\s*\|/.test(line);
+}
+
+function isSeparatorRow(line: string): boolean {
+  return /^\s*\|[\s\-:|]+\|/.test(line) && /[-]/.test(line);
+}
+
+function injectTableSeparators(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    out.push(lines[i]);
+    const curr = lines[i];
+    const next = lines[i + 1];
+    // Inject a separator after the header row when a table is missing one
+    const isFirstTableRow = isTableRow(curr) && (i === 0 || !isTableRow(lines[i - 1]));
+    if (
+      next !== undefined &&
+      isFirstTableRow &&
+      isTableRow(next) &&
+      !isSeparatorRow(curr) &&
+      !isSeparatorRow(next)
+    ) {
+      const cols = Math.max(1, (curr.match(/\|/g) ?? []).length - 1);
+      out.push(Array(cols).fill(" --- ").map(c => `|${c}`).join("") + "|");
+    }
+  }
+  return out.join("\n");
+}
+
 function addHardBreaks(text: string): string {
   const lines = text.split("\n");
   return lines.map((line, i) => {
@@ -69,10 +100,12 @@ function addHardBreaks(text: string): string {
     if (next === undefined) return line;
     const isList = /^(\d+\.\s+|[-*]\s+)/.test(line);
     const nextIsList = /^(\d+\.\s+|[-*]\s+)/.test(next);
+    const isTable = isTableRow(line);
+    const nextIsTable = isTableRow(next);
     const empty = line.trim() === "";
     const nextEmpty = next.trim() === "";
     // Add GFM hard-break (two trailing spaces) only between plain non-empty lines
-    if (!isList && !nextIsList && !empty && !nextEmpty) return line + "  ";
+    if (!isList && !nextIsList && !isTable && !nextIsTable && !empty && !nextEmpty) return line + "  ";
     return line;
   }).join("\n");
 }
@@ -80,7 +113,7 @@ function addHardBreaks(text: string): string {
 function CommentMarkdown({ content }: { content: string }) {
   // Convert @Name → markdown link so we can style it in the `a` component
   const withMentions = content.replace(/@(\w+)/g, "[@$1](@$1)");
-  const processed = addHardBreaks(withMentions);
+  const processed = addHardBreaks(injectTableSeparators(withMentions));
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
