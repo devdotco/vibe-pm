@@ -27,24 +27,23 @@ export function proxy(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token) {
     /*
-     * Hand off to the shell rather than showing a local sign-in form.
+     * Send people to THIS app's sign-in, not to the shell.
      *
-     * app.vb.co is the identity authority for the suite: if the person is
-     * already signed in there, it mints a short-lived token, redirects to
-     * /api/auth/callback above, and they arrive here signed in without typing
-     * anything. If they are not, the shell shows its own sign-in and sends
-     * them back. Either way there is one login for the whole suite, which is
-     * the point.
+     * A previous revision redirected every signed-out visitor to app.vb.co to
+     * pick up a hand-off token. That is right for anyone with a shell account
+     * and wrong for everyone else: Projects is also used by people who were
+     * invited straight to a board and sign in with a magic link, and they have
+     * no app.vb.co account to be handed off from. Bouncing them to the shell
+     * locked them out of a tool they had every right to open.
      *
-     * No loop: the shell only ever redirects back with a token, to its own
-     * sign-in, or to its module settings when the org is not entitled to
-     * Projects. /sign-in here stays reachable for magic-link recipients.
+     * So the local sign-in stays the default, and it offers "Continue with
+     * ViBe" for people who do have a shell account. SSO from the dashboard is
+     * unaffected — those links already point at the hand-off endpoint, which
+     * lands on /api/auth/callback above.
      */
-    const shell = (process.env.SHELL_URL ?? "https://app.vb.co").replace(/\/$/, "");
-    const handoff = `${shell}/api/shell/auth/module-token?aud=pm&next=${encodeURIComponent(
-      req.nextUrl.pathname + req.nextUrl.search
-    )}`;
-    return NextResponse.redirect(handoff);
+    return NextResponse.redirect(
+      new URL(`/sign-in?next=${encodeURIComponent(publicUrl)}`, `${proto}://${host}`)
+    );
   }
 
   // Pass the full URL as a request header so server layouts can build ?next= for expired-session redirects

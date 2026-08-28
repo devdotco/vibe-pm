@@ -75,9 +75,37 @@ function SignInForm() {
             <h1 style={{ fontSize: "22px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "8px" }}>
               Sign in
             </h1>
-            <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "28px" }}>
+            <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "20px" }}>
               Enter your email and we&apos;ll send you a sign-in link.
             </p>
+
+            {/*
+              For people who have an app.vb.co account this is one click — the
+              shell mints a hand-off token and sends them back signed in. The
+              magic-link form below stays the default, because plenty of people
+              are invited straight to a board and have no shell account at all.
+            */}
+            <a
+              href={`https://app.vb.co/api/shell/auth/module-token?aud=pm&next=${encodeURIComponent(next)}`}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                width: "100%", height: "44px", borderRadius: "10px",
+                background: "var(--accent)", color: "#fff", fontSize: "14px", fontWeight: 600,
+                textDecoration: "none", marginBottom: "18px",
+              }}
+            >
+              Continue with ViBe
+            </a>
+
+            <div style={{
+              display: "flex", alignItems: "center", gap: "10px",
+              margin: "0 0 18px", color: "var(--text-muted)", fontSize: "12px",
+            }}>
+              <span style={{ flex: 1, height: "1px", background: "var(--border)" }} />
+              or
+              <span style={{ flex: 1, height: "1px", background: "var(--border)" }} />
+            </div>
+
             <form onSubmit={submit}>
               <input
                 type="email"
