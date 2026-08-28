@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { users, sessions } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
+import { COOKIE_NAME, sessionCookieOptions } from '@/lib/auth/session';
 
 function verifyToken(token: string, secret: string): { email: string; expires: number } | null {
   const parts = token.split('.');
@@ -48,14 +49,7 @@ export async function GET(req: NextRequest) {
   const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'pm.vb.co';
   const proto = req.headers.get('x-forwarded-proto') ?? 'https';
   const res = NextResponse.redirect(new URL(next, `${proto}://${host}`));
-  res.cookies.set('__vibe_session', sessionToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 90 * 24 * 60 * 60,
-    path: '/',
-    domain: process.env.COOKIE_DOMAIN ?? '.vb.co',
-  });
+  res.cookies.set(COOKIE_NAME, sessionToken, sessionCookieOptions());
 
   return res;
 }
