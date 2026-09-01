@@ -269,5 +269,5 @@ function getPageTitle(pathname: string): string {
     if (parts[3] === "settings") return "Project Settings";
     if (parts[3] === "milestones") return "Milestones";
   }
-  return "ViBe PM";
+  return "erp.io PM";
 }

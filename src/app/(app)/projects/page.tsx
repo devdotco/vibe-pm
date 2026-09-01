@@ -49,11 +49,11 @@ function NewProjectModal({
   onCreated: (p: Project) => void;
 }) {
   const [name, setName] = useState("");
-  const [color, setColor] = useState("#2f5cff");
+  const [color, setColor] = useState("#2563eb");
   const [loading, setLoading] = useState(false);
 
   const colors = [
-    "#2f5cff",
+    "#2563eb",
     "#0d8f80",
     "#0f7a52",
     "#a6620a",

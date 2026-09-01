@@ -3,7 +3,7 @@
 const PRIORITY_CONFIG = {
   urgent: { label: "Urgent", color: "#bf2434", dot: "#bf2434" },
   high: { label: "High", color: "#a6620a", dot: "#a6620a" },
-  medium: { label: "Medium", color: "#2f5cff", dot: "#2f5cff" },
+  medium: { label: "Medium", color: "#2563eb", dot: "#2563eb" },
   low: { label: "Low", color: "#6c7484", dot: "#6c7484" },
   none: { label: "None", color: "#cdd2da", dot: "#cdd2da" },
 };

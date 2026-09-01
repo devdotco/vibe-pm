@@ -47,7 +47,7 @@ interface SidebarProps {
 }
 
 const COLORS = [
-  "#2f5cff",
+  "#2563eb",
   "#0d8f80",
   "#0f7a52",
   "#a6620a",
@@ -188,7 +188,7 @@ function NewProjectModal({
   onCreated: (p: Project) => void;
 }) {
   const [name, setName] = useState("");
-  const [color, setColor] = useState("#2f5cff");
+  const [color, setColor] = useState("#2563eb");
   const [loading, setLoading] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
@@ -925,9 +925,9 @@ export function Sidebar({ user }: SidebarProps) {
           gap: "8px",
         }}
       >
-        <svg width="68" height="18" viewBox="0 0 68 18" fill="none">
-          <text x="0" y="14" fontFamily="var(--font-geist-sans), system-ui, sans-serif" fontWeight="800" fontSize="14" fill="var(--accent)">ViBe</text>
-          <text x="46" y="14" fontFamily="var(--font-geist-sans), system-ui, sans-serif" fontWeight="600" fontSize="13" fill="rgba(255,255,255,0.55)">PM</text>
+        <svg width="86" height="18" viewBox="0 0 86 18" fill="none">
+          <text x="0" y="14" fontFamily="var(--font-geist-sans), system-ui, sans-serif" fontWeight="700" fontSize="14" letterSpacing="-0.3" fill="var(--accent)">erp.io</text>
+          <text x="54" y="14" fontFamily="var(--font-geist-sans), system-ui, sans-serif" fontWeight="600" fontSize="13" fill="rgba(255,255,255,0.55)">PM</text>
         </svg>
       </div>
 

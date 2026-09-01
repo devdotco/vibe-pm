@@ -2,7 +2,7 @@
 
 const STATUS_CONFIG = {
   completed: { label: "Completed", color: "#0f7a52", bg: "#0f7a5215" },
-  in_progress: { label: "In Progress", color: "#2f5cff", bg: "#2f5cff15" },
+  in_progress: { label: "In Progress", color: "#2563eb", bg: "#2563eb15" },
   blocked: { label: "Blocked", color: "#bf2434", bg: "#bf243415" },
   not_started: { label: "Not Started", color: "#6c7484", bg: "#6c748415" },
 };

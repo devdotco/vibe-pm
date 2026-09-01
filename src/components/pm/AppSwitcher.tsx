@@ -133,7 +133,7 @@ export function AppSwitcher() {
         height: "100%",
       }}
     >
-      {/* ViBe logo */}
+      {/* erp.io logo */}
       <div
         style={{
           width: "34px",
@@ -147,10 +147,10 @@ export function AppSwitcher() {
           marginBottom: "8px",
           overflow: "hidden",
         }}
-        title="ViBe"
+        title="erp.io"
       >
         <svg width="22" height="16" viewBox="0 0 22 16" fill="none">
-          <text x="0" y="13" fontFamily="var(--font-geist-sans), system-ui, sans-serif" fontWeight="800" fontSize="13" fill="white">V</text>
+          <text x="0" y="13" fontFamily="var(--font-geist-sans), system-ui, sans-serif" fontWeight="800" fontSize="13" fill="white" fontStyle="italic">E.</text>
         </svg>
       </div>
 
@@ -165,37 +165,37 @@ export function AppSwitcher() {
       />
 
       {/* Home */}
-      <AppIcon href={SHELL_URL} title="ViBe Home" external>
+      <AppIcon href={SHELL_URL} title="erp.io Home" external>
         <Home size={17} />
       </AppIcon>
 
       {/* Messaging */}
-      <AppIcon href={MESSAGING_URL} title="ViBe Chat" external>
+      <AppIcon href={MESSAGING_URL} title="erp.io Chat" external>
         <MessageSquare size={17} />
       </AppIcon>
 
       {/* PM (active) */}
-      <AppIcon href="/home" title="ViBe PM" active={isPM}>
+      <AppIcon href="/home" title="erp.io PM" active={isPM}>
         <CheckSquare size={17} />
       </AppIcon>
 
       {/* Portal */}
-      <AppIcon href={PORTAL_URL} title="ViBe Portal" external>
+      <AppIcon href={PORTAL_URL} title="erp.io Portal" external>
         <Users size={17} />
       </AppIcon>
 
       {/* Finance */}
-      <AppIcon href={FINANCE_URL} title="ViBe Finance" external>
+      <AppIcon href={FINANCE_URL} title="erp.io Finance" external>
         <TrendingUp size={17} />
       </AppIcon>
 
       {/* CRM */}
-      <AppIcon href={CRM_URL} title="ViBe CRM" external>
+      <AppIcon href={CRM_URL} title="erp.io CRM" external>
         <Building2 size={17} />
       </AppIcon>
 
       {/* Marketing */}
-      <AppIcon href={MARKETING_URL} title="ViBe Marketing" external>
+      <AppIcon href={MARKETING_URL} title="erp.io Marketing" external>
         <Megaphone size={17} />
       </AppIcon>
 

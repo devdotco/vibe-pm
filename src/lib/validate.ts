@@ -36,7 +36,7 @@ export const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(5_000).optional(),
   teamId: z.string().uuid().optional(),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#2f5cff'),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#2563eb'),
   icon: z.string().max(10).optional(),
   defaultView: z.enum(['list', 'board', 'calendar', 'timeline']).default('list'),
   isPublic: z.boolean().default(false),

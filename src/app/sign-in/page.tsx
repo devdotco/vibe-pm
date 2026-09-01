@@ -57,8 +57,9 @@ function SignInForm() {
             width: "36px", height: "36px", borderRadius: "8px",
             background: "var(--accent)", display: "flex", alignItems: "center",
             justifyContent: "center", color: "white", fontSize: "18px", fontWeight: 700,
-          }}>V</div>
-          <span style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)" }}>ViBe PM</span>
+            fontStyle: "italic",
+          }}>E.</div>
+          <span style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)" }}>erp.io PM</span>
         </div>
 
         {sent ? (
@@ -94,7 +95,7 @@ function SignInForm() {
                 textDecoration: "none", marginBottom: "18px",
               }}
             >
-              Continue with ViBe
+              Continue with erp.io
             </a>
 
             <div style={{

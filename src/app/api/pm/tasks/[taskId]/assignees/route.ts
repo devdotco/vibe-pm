@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
         sendTaskAssignedEmail({
           taskId,
           taskTitle: task.title,
-          projectName: project?.name ?? 'ViBe PM',
+          projectName: project?.name ?? 'erp.io PM',
           taskUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://pm.vb.co'}/projects/${task.projectId}?task=${taskId}`,
           recipientEmail: assigneeUser.email,
           recipientName: assigneeUser.name,

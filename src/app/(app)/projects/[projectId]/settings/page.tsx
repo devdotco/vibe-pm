@@ -507,7 +507,7 @@ function IntegrationsTab({ projectId }: { projectId: string }) {
         Messaging Channel Links
       </div>
       <div style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "16px" }}>
-        Link this project to a ViBe Messaging channel. Task events (create, complete, update) will be posted as bot messages in the linked channel.
+        Link this project to a erp.io Messaging channel. Task events (create, complete, update) will be posted as bot messages in the linked channel.
       </div>
 
       {links.length === 0 && !showAdd && (

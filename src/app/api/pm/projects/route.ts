@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   const { name, description, color, icon, teamId, isPublic, dueDate } = v.data;
 
   const [project] = await db.insert(projects).values({
-    orgId: user.orgId, name, description, color: color ?? '#2f5cff', icon,
+    orgId: user.orgId, name, description, color: color ?? '#2563eb', icon,
     teamId, isPublic: isPublic ?? false, dueDate, createdBy: user.id,
   }).returning();
 

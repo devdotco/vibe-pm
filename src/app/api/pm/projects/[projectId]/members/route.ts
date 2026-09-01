@@ -42,13 +42,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
       sgMail.setApiKey(apiKey);
       const projectUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://pm.vb.co'}/projects/${projectId}`;
       await sgMail.send({
-        from: process.env.EMAIL_FROM ?? 'ViBe PM <notifications@vb.co>',
+        from: process.env.EMAIL_FROM ?? 'erp.io PM <notifications@vb.co>',
         to: addedUser.email,
         subject: `${user.name} added you to ${project.name}`,
         html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
           <h2 style="font-size:18px;margin-bottom:8px">📋 You've been added to a project</h2>
-          <p style="color:#666;margin-bottom:16px">${user.name} added you to <strong>${project.name}</strong> on ViBe PM.</p>
-          <a href="${projectUrl}" style="display:inline-block;background:#2f5cff;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">Open project</a>
+          <p style="color:#666;margin-bottom:16px">${user.name} added you to <strong>${project.name}</strong> on erp.io PM.</p>
+          <a href="${projectUrl}" style="display:inline-block;background:#2563eb;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">Open project</a>
         </div>`,
       }).catch(() => {});
     }).catch(() => {});

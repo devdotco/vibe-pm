@@ -37,7 +37,7 @@ export function proxy(req: NextRequest) {
      * locked them out of a tool they had every right to open.
      *
      * So the local sign-in stays the default, and it offers "Continue with
-     * ViBe" for people who do have a shell account. SSO from the dashboard is
+     * erp.io" for people who do have a shell account. SSO from the dashboard is
      * unaffected — those links already point at the hand-off endpoint, which
      * lands on /api/auth/callback above.
      */

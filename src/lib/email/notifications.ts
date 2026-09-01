@@ -6,7 +6,7 @@ function parseFrom(s: string): { email: string; name?: string } {
   const m = s.match(/^(.+?)\s*<([^>]+)>$/);
   return m ? { name: m[1].trim(), email: m[2].trim() } : { email: s.trim() };
 }
-const FROM = parseFrom(process.env.EMAIL_FROM ?? 'ViBe PM <notifications@vb.co>');
+const FROM = parseFrom(process.env.EMAIL_FROM ?? 'erp.io PM <notifications@vb.co>');
 const REPLY_DOMAIN = process.env.EMAIL_REPLY_DOMAIN ?? 'reply.vb.co';
 const REPLY_SECRET = process.env.EMAIL_REPLY_SECRET ?? 'dev-secret';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://pm.vb.co';
@@ -29,14 +29,14 @@ function formatCommentHtml(text: string): string {
   const linkify = (s: string) =>
     escapeHtml(s).replace(
       /https?:\/\/[^\s<>"]+/g,
-      url => `<a href="${url}" style="color:#2f5cff">${url}</a>`
+      url => `<a href="${url}" style="color:#2563eb">${url}</a>`
     );
 
   const inlineFormat = (s: string) =>
     linkify(s)
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(/@(\w+)/g, '<strong style="color:#2f5cff">@$1</strong>');
+      .replace(/@(\w+)/g, '<strong style="color:#2563eb">@$1</strong>');
 
   for (const raw of lines) {
     const bullet = raw.match(/^[-*]\s+(.*)$/);
@@ -144,7 +144,7 @@ export async function sendTaskAssignedEmail(data: TaskNotificationData) {
       <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px">
         <strong style="font-size:16px">${data.taskTitle}</strong>
       </div>
-      <a href="${url}" style="display:inline-block;background:#2f5cff;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
+      <a href="${url}" style="display:inline-block;background:#2563eb;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
       <p style="color:#9ca3af;font-size:12px;margin-top:24px">Reply to this email to leave a comment on the task without logging in.</p>
     </div>`,
     replyTo
@@ -164,7 +164,7 @@ export async function sendTaskMentionEmail(data: TaskNotificationData) {
         <strong style="font-size:16px;display:block;margin-bottom:8px">${data.taskTitle}</strong>
         ${data.commentText ? `<div style="color:#374151;font-size:14px;line-height:1.6">${formatCommentHtml(data.commentText)}</div>` : ''}
       </div>
-      <a href="${url}" style="display:inline-block;background:#2f5cff;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
+      <a href="${url}" style="display:inline-block;background:#2563eb;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
       <p style="color:#9ca3af;font-size:12px;margin-top:24px">Reply to this email to respond without logging in.</p>
     </div>`,
     replyTo
@@ -182,9 +182,9 @@ export async function sendTaskCommentEmail(data: TaskNotificationData) {
       <p style="color:#666;margin-bottom:16px">${data.actorName} commented on a task in <strong>${data.projectName}</strong>:</p>
       <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px">
         <strong style="font-size:16px;display:block;margin-bottom:8px">${data.taskTitle}</strong>
-        ${data.commentText ? `<blockquote style="border-left:3px solid #2f5cff;padding-left:12px;color:#374151;margin:0;font-size:14px;line-height:1.6">${formatCommentHtml(data.commentText)}</blockquote>` : ''}
+        ${data.commentText ? `<blockquote style="border-left:3px solid #2563eb;padding-left:12px;color:#374151;margin:0;font-size:14px;line-height:1.6">${formatCommentHtml(data.commentText)}</blockquote>` : ''}
       </div>
-      <a href="${url}" style="display:inline-block;background:#2f5cff;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
+      <a href="${url}" style="display:inline-block;background:#2563eb;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
       <p style="color:#9ca3af;font-size:12px;margin-top:24px">Reply to this email to respond without logging in.</p>
     </div>`,
     replyTo

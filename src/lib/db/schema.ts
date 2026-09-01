@@ -53,7 +53,7 @@ export const projects = pgTable(
     teamId: uuid("team_id").references(() => teams.id),
     name: text("name").notNull(),
     description: text("description"),
-    color: text("color").default("#2f5cff").notNull(),
+    color: text("color").default("#2563eb").notNull(),
     icon: text("icon"),
     status: text("status").default("active").notNull(),
     defaultView: text("default_view").default("list").notNull(),
@@ -400,7 +400,7 @@ export const commentReactions = pgTable(
   (t) => [uniqueIndex("comment_reactions_unique_idx").on(t.commentId, t.userId, t.emoji)]
 );
 
-// ── Auth tables (shared with other ViBe modules) ──────────────────────────────
+// ── Auth tables (shared with other erp.io modules) ──────────────────────────────
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),

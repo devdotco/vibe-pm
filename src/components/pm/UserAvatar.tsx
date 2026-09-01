@@ -1,7 +1,7 @@
 "use client";
 
 const ACCENT_COLORS = [
-  "#2f5cff", "#0d8f80", "#0f7a52", "#a6620a", "#bf2434", "#6d4be0", "#6c7484",
+  "#2563eb", "#0d8f80", "#0f7a52", "#a6620a", "#bf2434", "#6d4be0", "#6c7484",
 ];
 
 function colorForUserId(id: string) {

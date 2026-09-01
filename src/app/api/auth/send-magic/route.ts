@@ -14,7 +14,7 @@ function makeToken(email: string, secret: string): string {
 export async function POST(req: NextRequest) {
   const secret = process.env.EMAIL_REPLY_SECRET;
   const sgKey = process.env.SENDGRID_API_KEY;
-  const from = process.env.EMAIL_FROM ?? 'ViBe PM <noreply@vb.co>';
+  const from = process.env.EMAIL_FROM ?? 'erp.io PM <noreply@vb.co>';
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://pm.vb.co';
 
   if (!secret || !sgKey) {
@@ -54,12 +54,12 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       from: { email: from.match(/<(.+)>/)?.[1] ?? 'noreply@vb.co', name: from.split('<')[0].trim() },
       personalizations: [{ to: [{ email: user.email, name: user.name }] }],
-      subject: 'Sign in to ViBe PM',
+      subject: 'Sign in to erp.io PM',
       content: [{ type: 'text/html', value: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
-          <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Sign in to ViBe PM</h2>
+          <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Sign in to erp.io PM</h2>
           <p style="color:#6c7484;margin-bottom:24px">Click the button below to sign in. This link expires in 24 hours.</p>
-          <a href="${link}" style="display:inline-block;padding:12px 24px;background:#2f5cff;color:white;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px">Sign in</a>
+          <a href="${link}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px">Sign in</a>
           <p style="color:#9ca3af;font-size:12px;margin-top:24px">If you didn't request this, ignore this email.</p>
         </div>` }],
     }),
