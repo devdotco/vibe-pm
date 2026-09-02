@@ -56,13 +56,20 @@ function AppIcon({
     flexShrink: 0,
   };
 
+  /**
+   * A sibling application is still one product, so it opens in THIS tab.
+   *
+   * `target="_blank"` made every switcher click spawn a window, and a new window
+   * that lands mid-hand-off reads as "it logged me out again" — you are staring
+   * at a sign-in form in a tab you did not ask for while the tab you were using
+   * sits behind it, still signed in. Same-tab navigation also lets the browser's
+   * back button undo a misclick, which a new window cannot.
+   */
   if (external) {
     return (
       <a
         href={href}
         title={title}
-        target="_blank"
-        rel="noopener noreferrer"
         style={style}
         onMouseEnter={(e) => {
           if (!active) {
