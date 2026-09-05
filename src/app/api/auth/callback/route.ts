@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { verifyModuleToken, shellSignInUrl, type ShellIdentity } from "@/lib/auth/module-token";
 import { createSessionToken, sessionCookieOptions, COOKIE_NAME } from "@/lib/auth/session";
 
@@ -37,37 +37,51 @@ function publicOrigin(req: NextRequest): string {
 }
 
 /**
- * Find this person in Projects, or create them.
+ * Find this person in Projects WITHIN THE ORGANIZATION THEY ARRIVED FROM, or
+ * create them there.
  *
- * Adopt-by-email: the suite's identity is the shell's, and someone who was
- * invited to a board by email before they ever signed in should land on that
- * same account rather than a duplicate. `orgId` is required by the schema and
- * comes from the token's `org` claim.
+ * The match is on (orgId, email), and the orgId half is the entire security
+ * property. This used to select on email alone, which meant the first row ever
+ * created for an address won permanently: anyone who already had an account
+ * here — every member of our own internal workspace — kept that row, and its
+ * original org_id, when they signed in from a brand-new workspace. The session
+ * they were handed was the internal user. They saw internal projects.
+ *
+ * So adopt-by-email is now adopt-by-email-within-an-org. Someone invited to a
+ * board before they ever signed in still lands on that account, because the
+ * invitation was issued inside an org too. Someone who belongs to two
+ * organizations gets two rows, which is correct: in this app they are two
+ * different members with two different sets of projects.
  */
 async function mirrorPrincipal(identity: ShellIdentity) {
+  // Refused BEFORE the lookup, not after. A token carrying no org cannot be
+  // scoped to one, and falling through to an unscoped query is precisely the
+  // bug this function now exists to prevent.
+  if (!identity.shellOrgId) {
+    throw new Error("Module token carries no organization; refusing to sign anyone in");
+  }
+  const orgId = identity.shellOrgId;
+
   const [existing] = await db
     .select()
     .from(users)
-    .where(eq(users.email, identity.email))
+    .where(and(eq(users.email, identity.email), eq(users.orgId, orgId)))
     .limit(1);
 
   if (existing) {
-    // Reactivate someone previously deactivated only if the shell still
-    // vouches for them, and keep the display name fresh.
+    // Keep the display name fresh. Status is deliberately NOT reactivated here:
+    // a row set inactive is a decision someone made inside this app, and the
+    // shell vouching for the person again does not undo it.
     if (existing.name !== identity.fullName && identity.fullName) {
       await db.update(users).set({ name: identity.fullName }).where(eq(users.id, existing.id));
     }
     return existing;
   }
 
-  if (!identity.shellOrgId) {
-    throw new Error("Module token carries no organisation; refusing to create a user");
-  }
-
   const [created] = await db
     .insert(users)
     .values({
-      orgId: identity.shellOrgId,
+      orgId,
       email: identity.email,
       name: identity.fullName || identity.email,
       status: "active",

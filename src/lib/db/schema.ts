@@ -402,16 +402,29 @@ export const commentReactions = pgTable(
 
 // ── Auth tables (shared with other erp.io modules) ──────────────────────────────
 
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  orgId: text("org_id").notNull(),
-  email: text("email").notNull().unique(),
-  name: text("name").notNull(),
-  avatarUrl: text("avatar_url"),
-  status: text("status").default("active").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: text("org_id").notNull(),
+    // NOT globally unique. A person is identified by email WITHIN an
+    // organization: the same address in two organizations is two rows, each
+    // scoped to its own org.
+    //
+    // It was `.unique()`, which made one email mean one org forever. The SSO
+    // callback adopts by email, so anyone who already had a row here kept that
+    // row — and its original org_id — when they signed in from a brand-new
+    // workspace. Their session was the internal user, and they saw internal
+    // projects. See drizzle/0004_user_per_org.sql.
+    email: text("email").notNull(),
+    name: text("name").notNull(),
+    avatarUrl: text("avatar_url"),
+    status: text("status").default("active").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("users_org_email_idx").on(t.orgId, t.email)],
+);
 
 export const sessions = pgTable("sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
