@@ -49,7 +49,9 @@ export async function GET(req: NextRequest) {
 
   const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'app.erp.io';
   const proto = req.headers.get('x-forwarded-proto') ?? 'https';
-  const res = NextResponse.redirect(new URL(next, `${proto}://${host}`));
+  // withBase: `next` is an app-absolute path and the base here is the bare
+  // origin, so without the mount a magic link lands on the shell.
+  const res = NextResponse.redirect(new URL(withBase(next), `${proto}://${host}`));
   res.cookies.set(COOKIE_NAME, sessionToken, sessionCookieOptions());
 
   return res;

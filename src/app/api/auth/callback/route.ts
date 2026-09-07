@@ -4,6 +4,7 @@ import { users } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { verifyModuleToken, shellSignInUrl, type ShellIdentity } from "@/lib/auth/module-token";
 import { createSessionToken, sessionCookieOptions, COOKIE_NAME } from "@/lib/auth/session";
+import { withBase } from "@/lib/base-path";
 
 /**
  * Redeems a shell-issued module token for a Projects session.
@@ -27,10 +28,19 @@ function safeReturnPath(raw: string | null): string {
 /**
  * Behind the proxy the request's own origin is the container's bind address,
  * so building redirects from it sends the browser to 0.0.0.0 and stops there.
+ *
+ * The ORIGIN ONLY — never the mount. `APP_URL` is `https://app.erp.io/pm`, and
+ * an app-absolute path resolved against that REPLACES the whole pathname:
+ * `new URL('/home', 'https://app.erp.io/pm')` is `https://app.erp.io/home`,
+ * the shell's home. Every hand-off into Projects landed there instead of here,
+ * which is why the module would not open from any rail. The mount is added back
+ * with withBase() at each redirect, joined rather than resolved.
  */
 function publicOrigin(req: NextRequest): string {
   const configured = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
-  if (configured) return configured.replace(/\/$/, "");
+  if (configured) {
+    try { return new URL(configured).origin; } catch { /* fall through */ }
+  }
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "app.erp.io";
   const proto = req.headers.get("x-forwarded-proto") ?? "https";
   return `${proto}://${host}`;
@@ -97,7 +107,7 @@ export async function GET(req: NextRequest) {
   const origin = publicOrigin(req);
 
   if (!token) {
-    return NextResponse.redirect(shellSignInUrl(new URL(next, origin).toString()));
+    return NextResponse.redirect(shellSignInUrl(new URL(withBase(next), origin).toString()));
   }
 
   let user;
@@ -108,15 +118,15 @@ export async function GET(req: NextRequest) {
     // Anything suspect — expired, wrong audience, wrong key, no org — is
     // "not signed in". Never a soft failure that lets the request through.
     console.warn("[auth/callback] rejected module token:", (err as Error).message);
-    return NextResponse.redirect(shellSignInUrl(new URL(next, origin).toString()));
+    return NextResponse.redirect(shellSignInUrl(new URL(withBase(next), origin).toString()));
   }
 
   if (!user || user.status !== "active") {
-    return NextResponse.redirect(shellSignInUrl(new URL(next, origin).toString()));
+    return NextResponse.redirect(shellSignInUrl(new URL(withBase(next), origin).toString()));
   }
 
   const sessionToken = await createSessionToken(user.id);
-  const res = NextResponse.redirect(new URL(next, origin));
+  const res = NextResponse.redirect(new URL(withBase(next), origin));
   res.cookies.set(COOKIE_NAME, sessionToken, sessionCookieOptions());
   return res;
 }
