@@ -926,7 +926,7 @@ export function Sidebar({ user }: SidebarProps) {
         user={{ name: user.name, email: user.email }}
         settingsHref="/admin/users"
         /*
-         * A real sign-out. "Log out" here was an <a href="/sign-in"> — it
+         * A real sign-out. "Log out" here was an <a href={withBase("/sign-in")}> — it
          * navigated to the sign-in page and left the session cookie standing,
          * so the next click put you straight back in. The route below clears
          * the cookie at the mount path first.

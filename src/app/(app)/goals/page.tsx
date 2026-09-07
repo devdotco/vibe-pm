@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { format, parseISO } from "date-fns";
-import { apiFetch } from "@/lib/base-path";
+import { apiFetch, withBase } from "@/lib/base-path";
 
 interface Goal {
   id: string; title: string; description: string | null; status: string;
@@ -247,7 +247,7 @@ function LinkedProjectsPanel({
         return (
           <div key={link.id} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
             <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: project.color, flexShrink: 0 }} />
-            <a href={`/projects/${project.id}`} style={{ fontSize: "13px", color: "var(--text-primary)", textDecoration: "none", flex: 1 }}>{project.name}</a>
+            <a href={withBase(`/projects/${project.id}`)} style={{ fontSize: "13px", color: "var(--text-primary)", textDecoration: "none", flex: 1 }}>{project.name}</a>
             <button onClick={() => onUnlink(goalId, link.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "14px", padding: "0 2px" }}>×</button>
           </div>
         );

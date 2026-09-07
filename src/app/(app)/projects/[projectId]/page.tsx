@@ -5,7 +5,7 @@ import { ProjectListView } from "@/components/pm/project/ProjectListView";
 import { KanbanBoard, KanbanBoardSkeleton } from "@/components/pm/board/KanbanBoard";
 import { TaskDetailPanel } from "@/components/pm/task/TaskDetailPanel";
 import PusherClient from "pusher-js";
-import { apiFetch } from "@/lib/base-path";
+import { apiFetch, withBase } from "@/lib/base-path";
 
 interface Project { id: string; name: string; color: string; status: string; description: string | null; orgId: string; }
 interface Section { id: string; name: string; position: number; color?: string | null; }
@@ -111,8 +111,8 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
           <span style={{ width: "12px", height: "12px", borderRadius: "50%", background: project.color, flexShrink: 0 }} />
           <h1 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)" }}>{project.name}</h1>
-          <a href={`/projects/${projectId}/stats`} style={{ marginLeft: "auto", fontSize: "13px", color: "var(--text-muted)", textDecoration: "none", padding: "4px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}>Stats</a>
-          <a href={`/projects/${projectId}/settings`} style={{ fontSize: "13px", color: "var(--text-muted)", textDecoration: "none", padding: "4px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}>⚙ Settings</a>
+          <a href={withBase(`/projects/${projectId}/stats`)} style={{ marginLeft: "auto", fontSize: "13px", color: "var(--text-muted)", textDecoration: "none", padding: "4px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}>Stats</a>
+          <a href={withBase(`/projects/${projectId}/settings`)} style={{ fontSize: "13px", color: "var(--text-muted)", textDecoration: "none", padding: "4px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}>⚙ Settings</a>
         </div>
         <div style={{ display: "flex", gap: "4px" }}>
           {VIEWS.map(v => (

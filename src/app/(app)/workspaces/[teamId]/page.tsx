@@ -118,7 +118,7 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ team
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "12px" }}>
               {projects.map(p => (
-                <a key={p.id} href={`/projects/${p.id}`} style={{ textDecoration: "none" }}>
+                <a key={p.id} href={withBase(`/projects/${p.id}`)} style={{ textDecoration: "none" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 16px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "8px" }}>
                     <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: p.color, flexShrink: 0 }} />
                     <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-primary)" }}>{p.name}</span>
