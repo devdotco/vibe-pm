@@ -36,7 +36,17 @@ export function proxy(req: NextRequest) {
   if (isPublic) return NextResponse.next();
   const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'app.erp.io';
   const proto = req.headers.get('x-forwarded-proto') ?? 'https';
-  const publicUrl = `${proto}://${host}${req.nextUrl.pathname}${req.nextUrl.search}`;
+  /*
+   * withBase, because Next strips the mount from `nextUrl.pathname`.
+   *
+   * Without it this built https://app.erp.io/home — the SHELL's home, not this
+   * app's — and handed it to the sign-in form as `next=`. Signing in then
+   * bounced the person out of Projects into the shell, which looks like the
+   * sign-in silently failing to take them where they were going.
+   *
+   * withBase is idempotent, so this is right whichever form Next hands us.
+   */
+  const publicUrl = `${proto}://${host}${withBase(req.nextUrl.pathname)}${req.nextUrl.search}`;
 
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token) {
