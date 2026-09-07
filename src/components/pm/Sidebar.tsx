@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import type { User } from "@/lib/db/schema";
-import { ModuleSidebar, AppRail, buildRailItems } from "@erp-ui";
+import { ModuleSidebar, AppRail, buildRailItems, SHELL_URL } from "@erp-ui";
 import type { ErpBrand } from "@erp-ui";
 import { ERP_MODULE_ICONS } from "@erp-ui/icons";
 import { withBase } from "@/lib/base-path";
@@ -49,6 +49,8 @@ interface Team {
 
 interface SidebarProps {
   user: User;
+  /** Every organisation this person may act as, from the shell. */
+  orgs?: { id: string; name: string }[];
 }
 
 const COLORS = [
@@ -832,7 +834,7 @@ function GlobalSettingsModal({ onClose }: { onClose: () => void }) {
 
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 
-export function Sidebar({ user }: SidebarProps) {
+export function Sidebar({ user, orgs }: SidebarProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -911,6 +913,24 @@ export function Sidebar({ user }: SidebarProps) {
         moduleLabel="Projects"
         moduleIcon={ERP_MODULE_ICONS.pm}
         moduleHref="/home"
+        orgs={orgs?.length ? orgs : undefined}
+        currentOrgId={user.orgId}
+        onSwitchOrg={(orgId) => {
+          /*
+           * TWO hops. Changing the shell's acting organisation does not touch
+           * this module's session, which is bound to the organisation it was
+           * minted for — so the switch goes back through the hand-off, which
+           * mints a fresh one. Stopping after the shell's switch would change
+           * the shell and leave Projects exactly as it was, which reads as the
+           * switcher doing nothing.
+           *
+           * Built here, in a client component: handing the layout a function to
+           * pass down would be a function crossing the server boundary.
+           */
+          const handoff = `${SHELL_URL}/api/shell/auth/module-token?aud=pm&next=${encodeURIComponent(withBase("/home"))}`;
+          window.location.href =
+            `${SHELL_URL}/api/shell/org/switch?orgId=${encodeURIComponent(orgId)}&next=${encodeURIComponent(handoff)}`;
+        }}
         sections={[
           {
             items: [
