@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { taskComments, tasks, users } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { verifyReplyAddress, stripQuotedReply } from '@/lib/email/notifications';
 import { pusherServer } from '@/lib/pusher/server';
 
@@ -61,23 +61,33 @@ export async function POST(req: NextRequest) {
   if (type === 'task') {
     const taskId = entityId;
 
-    // Find or create a user record for this email sender
-    let [user] = await db.select().from(users).where(eq(users.email, fromEmail)).limit(1);
+    // The task first — its organization is what scopes everything below.
+    const [task] = await db.select({ id: tasks.id, orgId: tasks.orgId })
+      .from(tasks).where(eq(tasks.id, taskId)).limit(1);
+    if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+
+    /*
+     * Find or create the sender IN THE TASK'S ORGANIZATION.
+     *
+     * This looked the sender up by email alone and created them in the literal
+     * 'platform_default'. Both halves were wrong: the lookup could return a
+     * person's account in a different workspace and attribute the reply to it,
+     * and the insert dropped new senders into a shared legacy org regardless of
+     * whose task they had replied to.
+     */
+    let [user] = await db.select().from(users)
+      .where(and(eq(users.email, fromEmail), eq(users.orgId, task.orgId)))
+      .limit(1);
     if (!user) {
       const name = from.replace(/<[^>]+>/, '').trim() || fromEmail.split('@')[0]!;
       const [created] = await db.insert(users).values({
-        orgId: 'platform_default',
+        orgId: task.orgId,
         email: fromEmail,
         name,
         status: 'active',
       }).returning();
       user = created!;
     }
-
-    // Verify the task exists
-    const [task] = await db.select({ id: tasks.id, orgId: tasks.orgId })
-      .from(tasks).where(eq(tasks.id, taskId)).limit(1);
-    if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
     // Insert comment sourced from email
     const [comment] = await db.insert(taskComments).values({

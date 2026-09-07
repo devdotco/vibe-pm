@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from "drizzle-orm";
 import crypto from 'crypto';
 
 function makeToken(email: string, secret: string): string {
@@ -32,7 +32,12 @@ export async function POST(req: NextRequest) {
 
   let user: { email: string; name: string } | undefined;
   try {
-    const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    // Newest first — see the note in verify/route.ts. One email can be
+    // several accounts, and an unordered limit(1) picked arbitrarily.
+    const rows = await db.select().from(users)
+      .where(eq(users.email, email))
+      .orderBy(desc(users.createdAt))
+      .limit(1);
     user = rows[0];
   } catch {
     return NextResponse.json({ error: 'Service unavailable. Please try again.' }, { status: 503 });

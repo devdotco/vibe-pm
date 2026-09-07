@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { users, sessions } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import crypto from 'crypto';
 import { COOKIE_NAME, sessionCookieOptions } from '@/lib/auth/session';
 import { withBase } from "@/lib/base-path";
@@ -24,12 +24,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid secret' }, { status: 403 });
   }
 
-  let [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  // Newest first — one email can be several accounts now. See verify/route.ts.
+  let [user] = await db.select().from(users)
+    .where(eq(users.email, email))
+    .orderBy(desc(users.createdAt))
+    .limit(1);
 
   if (!user) {
+    /*
+     * A person we have never seen gets their OWN empty workspace.
+     *
+     * This put them in the literal 'platform_default' — the shared legacy
+     * workspace holding every internal project. A brand-new account could read
+     * all of it from its first sign-in, which is the leak this whole line of
+     * work exists to close. A fresh org id means a blank Projects with nothing
+     * in it, which is what a new account should see.
+     */
     const name = email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     [user] = await db.insert(users).values({
-      orgId: 'platform_default',
+      orgId: `own_${crypto.randomBytes(12).toString('hex')}`,
       email,
       name,
       status: 'active',
