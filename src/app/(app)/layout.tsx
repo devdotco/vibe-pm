@@ -5,6 +5,7 @@ import { AppShell } from "@erp-ui";
 import { TopBar } from "@/components/pm/TopBar";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listShellOrgs } from "@/lib/auth/shell-orgs";
+import { loadShellNav } from "@erp-ui/server";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -20,10 +21,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Best-effort: an unreachable shell collapses the switcher to a label.
   const orgs = await listShellOrgs();
 
+  // White-label chrome and entitlement, both from the shell in one call.
+
+  // Best-effort: brandVars(null) draws the erp.io defaults.
+
+  const { brand, modules } = await loadShellNav();
+
+
   return (
     <AppShell
+      brand={brand}
       moduleLabel="Projects"
-      rail={<PmRail />}
+      rail={<PmRail brand={brand} modules={modules} />}
       sidebar={<Sidebar user={user} orgs={orgs} />}
     >
       <TopBar user={user} />
