@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { apiFetch } from "@/lib/base-path";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -271,7 +272,7 @@ function FilterPanel({ filters, sections, taskAssignees, onFilters, onClose }: {
 
   const saveDefaults = async () => {
     setSaving(true);
-    await fetch("/api/pm/preferences", {
+    await apiFetch("/api/pm/preferences", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hiddenSections: filters.hiddenSections }),
@@ -1012,11 +1013,11 @@ export function ProjectListView({
   }, []);
 
   useEffect(() => {
-    fetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
+    apiFetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
   }, []);
 
   useEffect(() => {
-    fetch("/api/pm/preferences")
+    apiFetch("/api/pm/preferences")
       .then(r => r.json())
       .then((d: { preferences?: { hiddenSections?: string[] } }) => {
         const hidden = d.preferences?.hiddenSections ?? [];
@@ -1036,7 +1037,7 @@ export function ProjectListView({
 
   const runBulkAction = useCallback(async (action: string, value?: string) => {
     const taskIds = Array.from(selectedTaskIds);
-    const res = await fetch("/api/pm/tasks/bulk", {
+    const res = await apiFetch("/api/pm/tasks/bulk", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ taskIds, action, value }),
     });
@@ -1074,7 +1075,7 @@ export function ProjectListView({
     const nowExpanded = !expandedTasks[taskId];
     setExpandedTasks(prev => ({ ...prev, [taskId]: nowExpanded }));
     if (nowExpanded && !subtaskCache[taskId]) {
-      const res = await fetch(`/api/pm/projects/${projectId}/tasks?parentTaskId=${taskId}`);
+      const res = await apiFetch(`/api/pm/projects/${projectId}/tasks?parentTaskId=${taskId}`);
       const d = await res.json() as { tasks?: Task[] };
       setSubtaskCache(prev => ({ ...prev, [taskId]: d.tasks ?? [] }));
     }
@@ -1082,7 +1083,7 @@ export function ProjectListView({
 
   const addTask = useCallback(async (sectionId: string | null) => {
     if (!newTaskTitle.trim()) { setAddingInSection(null); return; }
-    const res = await fetch("/api/pm/tasks", {
+    const res = await apiFetch("/api/pm/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId, sectionId, title: newTaskTitle.trim() }),
     });
@@ -1092,7 +1093,7 @@ export function ProjectListView({
   }, [newTaskTitle, projectId, tasks, setTasks]);
 
   const addSubtask = useCallback(async (parentId: string, title: string) => {
-    const res = await fetch("/api/pm/tasks", {
+    const res = await apiFetch("/api/pm/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId, parentTaskId: parentId, title }),
     });
@@ -1106,9 +1107,9 @@ export function ProjectListView({
 
   const toggleComplete = useCallback(async (task: Task) => {
     if (task.status === "completed") {
-      await fetch(`/api/pm/tasks/${task.id}/reopen`, { method: "POST" });
+      await apiFetch(`/api/pm/tasks/${task.id}/reopen`, { method: "POST" });
     } else {
-      await fetch(`/api/pm/tasks/${task.id}/complete`, { method: "POST" });
+      await apiFetch(`/api/pm/tasks/${task.id}/complete`, { method: "POST" });
     }
     const upd = (t: Task): Task => t.id === task.id ? {
       ...t,
@@ -1129,7 +1130,7 @@ export function ProjectListView({
   };
   const commitRename = async (sectionId: string) => {
     if (!renameValue.trim()) { setRenamingSection(null); return; }
-    await fetch(`/api/pm/projects/${projectId}/sections/${sectionId}`, {
+    await apiFetch(`/api/pm/projects/${projectId}/sections/${sectionId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: renameValue.trim() }),
     });
@@ -1138,12 +1139,12 @@ export function ProjectListView({
   };
   const deleteSection = async (sectionId: string) => {
     if (!confirm("Delete this section? Tasks will become unsectioned.")) return;
-    await fetch(`/api/pm/projects/${projectId}/sections/${sectionId}`, { method: "DELETE" });
+    await apiFetch(`/api/pm/projects/${projectId}/sections/${sectionId}`, { method: "DELETE" });
     setSections(sections.filter(s => s.id !== sectionId));
     setSectionMenu(null);
   };
   const updateSectionColor = async (sectionId: string, color: string | null) => {
-    await fetch(`/api/pm/projects/${projectId}/sections/${sectionId}`, {
+    await apiFetch(`/api/pm/projects/${projectId}/sections/${sectionId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ color }),
     });
@@ -1152,7 +1153,7 @@ export function ProjectListView({
   };
   const addSection = async () => {
     if (!newSectionName.trim()) { setAddingSection(false); return; }
-    const res = await fetch(`/api/pm/projects/${projectId}/sections`, {
+    const res = await apiFetch(`/api/pm/projects/${projectId}/sections`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newSectionName.trim() }),
     });

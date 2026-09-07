@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { COOKIE_NAME } from "@/lib/auth/session";
+import { stripBase, withBase } from "@/lib/base-path";
 
 const PUBLIC = [
   // The shell redirects here with a hand-off token. Gating it would bounce the
@@ -18,9 +19,22 @@ const PUBLIC = [
 ];
 
 export function proxy(req: NextRequest) {
-  const isPublic = PUBLIC.some((p) => req.nextUrl.pathname.startsWith(p));
+  /*
+   * Match the list above WITHOUT the mount.
+   *
+   * The app is served from app.erp.io/pm, and `/pm/sign-in` does not start with
+   * `/sign-in` — so every public path above would have become private at once,
+   * including the SSO callback, which would have bounced the hand-off token to
+   * a sign-in that itself required signing in.
+   *
+   * Stripped rather than prefixed because Next has shipped `nextUrl.pathname`
+   * both with and without the basePath; `stripBase` is a no-op on the form that
+   * arrives already stripped, so this is correct either way.
+   */
+  const path = stripBase(req.nextUrl.pathname);
+  const isPublic = PUBLIC.some((p) => path.startsWith(p));
   if (isPublic) return NextResponse.next();
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'pm.vb.co';
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'app.erp.io';
   const proto = req.headers.get('x-forwarded-proto') ?? 'https';
   const publicUrl = `${proto}://${host}${req.nextUrl.pathname}${req.nextUrl.search}`;
 
@@ -42,7 +56,9 @@ export function proxy(req: NextRequest) {
      * lands on /api/auth/callback above.
      */
     return NextResponse.redirect(
-      new URL(`/sign-in?next=${encodeURIComponent(publicUrl)}`, `${proto}://${host}`)
+      // withBase: an app-absolute path resolved against the ORIGIN replaces the
+      // whole pathname, so this would land on the shell's sign-in.
+      new URL(withBase(`/sign-in?next=${encodeURIComponent(publicUrl)}`), `${proto}://${host}`)
     );
   }
 

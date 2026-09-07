@@ -7,6 +7,7 @@ import { PrioritySelect } from "@/components/pm/PriorityBadge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { formatDistanceToNow, parseISO, isValid } from "date-fns";
+import { apiFetch } from "@/lib/base-path";
 
 function safeRelativeTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
@@ -449,24 +450,24 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   };
 
   const loadAll = useCallback(() => {
-    fetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => {
+    apiFetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => {
       setTask(d.task);
       setCustomFields((d.task?.customFields as Record<string, string>) ?? {});
     });
-    fetch(`/api/pm/tasks/${taskId}/watch`).then(r => r.json()).then(d => setWatching(d.watching ?? false));
-    fetch(`/api/pm/tasks/${taskId}/watchers`).then(r => r.json()).then(d => setWatcherCount((d.watchers ?? []).length));
-    fetch(`/api/pm/tasks/${taskId}/recurrence`).then(r => r.json()).then(d => setRecurrence(d.recurrence));
-    fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
-    fetch(`/api/pm/tasks/${taskId}/subtasks`).then(r => r.json()).then(d => setSubtasks(d.subtasks ?? []));
-    fetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json()).then(d => setAssignees(d.assignees ?? []));
-    fetch(`/api/pm/tasks/${taskId}/dependencies`).then(r => r.json()).then(d => setDependencies(d.dependencies ?? []));
-    fetch(`/api/pm/tasks/${taskId}/attachments`).then(r => r.json()).then(d => setAttachments(d.attachments ?? []));
+    apiFetch(`/api/pm/tasks/${taskId}/watch`).then(r => r.json()).then(d => setWatching(d.watching ?? false));
+    apiFetch(`/api/pm/tasks/${taskId}/watchers`).then(r => r.json()).then(d => setWatcherCount((d.watchers ?? []).length));
+    apiFetch(`/api/pm/tasks/${taskId}/recurrence`).then(r => r.json()).then(d => setRecurrence(d.recurrence));
+    apiFetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
+    apiFetch(`/api/pm/tasks/${taskId}/subtasks`).then(r => r.json()).then(d => setSubtasks(d.subtasks ?? []));
+    apiFetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json()).then(d => setAssignees(d.assignees ?? []));
+    apiFetch(`/api/pm/tasks/${taskId}/dependencies`).then(r => r.json()).then(d => setDependencies(d.dependencies ?? []));
+    apiFetch(`/api/pm/tasks/${taskId}/attachments`).then(r => r.json()).then(d => setAttachments(d.attachments ?? []));
   }, [taskId]);
 
   useEffect(() => {
-    fetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
-    fetch("/api/pm/me").then(r => r.json()).then(d => setCurrentUserId(d.id ?? null)).catch(() => {});
-    fetch("/api/pm/projects").then(r => r.json()).then(d => setOrgProjects(d.projects ?? []));
+    apiFetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
+    apiFetch("/api/pm/me").then(r => r.json()).then(d => setCurrentUserId(d.id ?? null)).catch(() => {});
+    apiFetch("/api/pm/projects").then(r => r.json()).then(d => setOrgProjects(d.projects ?? []));
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -498,13 +499,13 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     const pusher = new Pusher(pusherKey, { cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER ?? "us2" });
     const ch = pusher.subscribe(`task-${taskId}`);
     const refreshFeed = () => {
-      fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
+      apiFetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
     };
     const refreshAll = () => {
-      fetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => {
+      apiFetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => {
         if (d.task) setTask(d.task);
       });
-      fetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json()).then(d => setAssignees(d.assignees ?? []));
+      apiFetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json()).then(d => setAssignees(d.assignees ?? []));
       refreshFeed();
     };
     ch.bind('task.comment', refreshFeed);
@@ -517,15 +518,15 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     setTask(t => t ? { ...t, ...patch } : t);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
-      await fetch(`/api/pm/tasks/${taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
-      fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
+      await apiFetch(`/api/pm/tasks/${taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+      apiFetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
     }, 500);
   }, [task, taskId]);
 
   const moveToProject = async (targetProjectId: string) => {
     setMovingProject(true);
     try {
-      const res = await fetch(`/api/pm/tasks/${taskId}/move-project`, {
+      const res = await apiFetch(`/api/pm/tasks/${taskId}/move-project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: targetProjectId }),
@@ -544,7 +545,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     setPostingComment(true);
     setCommentError("");
     try {
-      const res = await fetch(`/api/pm/tasks/${taskId}/comments`, {
+      const res = await apiFetch(`/api/pm/tasks/${taskId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: comment.trim() }),
@@ -555,7 +556,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
         return;
       }
       setComment("");
-      const feedData = await fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json());
+      const feedData = await apiFetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json());
       setFeed(feedData.feed ?? []);
     } catch {
       setCommentError("Network error — please try again");
@@ -567,20 +568,20 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const saveEdit = async () => {
     if (!editingCommentId || !editContent.trim() || savingEdit) return;
     setSavingEdit(true);
-    await fetch(`/api/pm/tasks/${taskId}/comments/${editingCommentId}`, {
+    await apiFetch(`/api/pm/tasks/${taskId}/comments/${editingCommentId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: editContent.trim() }),
     });
     setEditingCommentId(null);
-    const feedData = await fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json());
+    const feedData = await apiFetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json());
     setFeed(feedData.feed ?? []);
     setSavingEdit(false);
   };
 
   const deleteComment = async (id: string) => {
     if (!confirm("Delete this comment?")) return;
-    await fetch(`/api/pm/tasks/${taskId}/comments/${id}`, { method: "DELETE" });
+    await apiFetch(`/api/pm/tasks/${taskId}/comments/${id}`, { method: "DELETE" });
     setFeed(prev => prev.filter(f => f.id !== id));
   };
 
@@ -596,13 +597,13 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
           : [...reactions, { userId: currentUserId!, userName: null }],
       };
     }));
-    await fetch(`/api/pm/tasks/${taskId}/comments/${commentId}/reactions`, { method: "POST" });
-    fetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
+    await apiFetch(`/api/pm/tasks/${taskId}/comments/${commentId}/reactions`, { method: "POST" });
+    apiFetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
   };
 
   const addSubtask = async () => {
     if (!newSubtaskTitle.trim()) return;
-    const res = await fetch(`/api/pm/tasks/${taskId}/subtasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: newSubtaskTitle.trim() }) });
+    const res = await apiFetch(`/api/pm/tasks/${taskId}/subtasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: newSubtaskTitle.trim() }) });
     const d = await res.json();
     if (d.subtask) setSubtasks(s => [...s, d.subtask]);
     setNewSubtaskTitle(""); setAddingSubtask(false);
@@ -610,13 +611,13 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
 
   const toggleSubtask = async (sub: SubTask) => {
     const method = sub.status === "completed" ? "/reopen" : "/complete";
-    await fetch(`/api/pm/tasks/${sub.id}${method}`, { method: "POST" });
+    await apiFetch(`/api/pm/tasks/${sub.id}${method}`, { method: "POST" });
     setSubtasks(s => s.map(x => x.id === sub.id ? { ...x, status: x.status === "completed" ? "not_started" : "completed" } : x));
   };
 
   const complete = async () => {
     if (!task) return;
-    await fetch(`/api/pm/tasks/${taskId}/complete`, { method: "POST" });
+    await apiFetch(`/api/pm/tasks/${taskId}/complete`, { method: "POST" });
     setTask(t => t ? { ...t, status: "completed", completedAt: new Date().toISOString() } : t);
   };
 
@@ -634,7 +635,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
 
   const addDependency = async () => {
     if (!depTaskId.trim()) return;
-    const res = await fetch(`/api/pm/tasks/${taskId}/dependencies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dependsOnTaskId: depTaskId.trim(), type: depType }) });
+    const res = await apiFetch(`/api/pm/tasks/${taskId}/dependencies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dependsOnTaskId: depTaskId.trim(), type: depType }) });
     const d = await res.json();
     if (d.dependency) { setDependencies(prev => [...prev, d.dependency]); setDepTaskId(""); setShowDepInput(false); }
   };
@@ -643,7 +644,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     const updated = { ...customFields, [key]: value };
     setCustomFields(updated);
     setEditingFieldKey(null);
-    await fetch(`/api/pm/tasks/${taskId}`, {
+    await apiFetch(`/api/pm/tasks/${taskId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ customFields: updated }),
     });
@@ -656,7 +657,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     setCustomFields(updated);
     setNewFieldKey(""); setAddingField(false);
     setEditingFieldKey(key); setEditingFieldValue("");
-    await fetch(`/api/pm/tasks/${taskId}`, {
+    await apiFetch(`/api/pm/tasks/${taskId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ customFields: updated }),
     });
@@ -666,7 +667,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     const updated = { ...customFields };
     delete updated[key];
     setCustomFields(updated);
-    await fetch(`/api/pm/tasks/${taskId}`, {
+    await apiFetch(`/api/pm/tasks/${taskId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ customFields: updated }),
     });
@@ -677,7 +678,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     if (!file || !task) return;
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch(`/api/pm/tasks/${taskId}/attachments/upload`, { method: "POST", body: formData });
+    const res = await apiFetch(`/api/pm/tasks/${taskId}/attachments/upload`, { method: "POST", body: formData });
     const d = await res.json() as { attachment?: Attachment };
     if (d.attachment) setAttachments(prev => [...prev, d.attachment!]);
     e.target.value = "";
@@ -703,7 +704,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
       formData.append("file", file, `paste-${Date.now()}.png`);
       setUploadingImage(true);
       try {
-        const res = await fetch(`/api/pm/tasks/${taskId}/attachments/upload`, { method: "POST", body: formData });
+        const res = await apiFetch(`/api/pm/tasks/${taskId}/attachments/upload`, { method: "POST", body: formData });
         const d = await res.json() as { attachment?: Attachment };
         if (d.attachment) insertIntoComment(`![image](${d.attachment.url})`);
       } finally {
@@ -732,7 +733,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     formData.append("file", file);
     setUploadingImage(true);
     try {
-      const res = await fetch(`/api/pm/tasks/${taskId}/attachments/upload`, { method: "POST", body: formData });
+      const res = await apiFetch(`/api/pm/tasks/${taskId}/attachments/upload`, { method: "POST", body: formData });
       const d = await res.json() as { attachment?: Attachment };
       if (d.attachment) {
         const md = file.type.startsWith("image/")
@@ -804,7 +805,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
           <button
             onClick={async () => {
               const method = watching ? "DELETE" : "POST";
-              await fetch(`/api/pm/tasks/${taskId}/watch`, { method });
+              await apiFetch(`/api/pm/tasks/${taskId}/watch`, { method });
               setWatching(!watching);
               setWatcherCount(c => watching ? c - 1 : c + 1);
             }}
@@ -885,7 +886,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                   <Avatar name={a.name} size={18} />
                   {a.name}
                   <button onClick={async () => {
-                    await fetch(`/api/pm/tasks/${taskId}/assignees/${a.id}`, { method: "DELETE" });
+                    await apiFetch(`/api/pm/tasks/${taskId}/assignees/${a.id}`, { method: "DELETE" });
                     setAssignees(prev => prev.filter(x => x.id !== a.id));
                   }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "12px", lineHeight: 1, padding: "0", marginLeft: "2px" }}>×</button>
                 </div>
@@ -916,8 +917,8 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                           <button
                             key={u.id}
                             onClick={async () => {
-                              await fetch(`/api/pm/tasks/${taskId}/assignees`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: u.id }) });
-                              const d = await fetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json());
+                              await apiFetch(`/api/pm/tasks/${taskId}/assignees`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: u.id }) });
+                              const d = await apiFetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json());
                               setAssignees(d.assignees ?? []);
                               setShowAssigneePicker(false);
                             }}
@@ -1006,11 +1007,11 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                 onChange={async e => {
                   const freq = e.target.value;
                   if (!freq) {
-                    await fetch(`/api/pm/tasks/${taskId}/recurrence`, { method: "DELETE" });
+                    await apiFetch(`/api/pm/tasks/${taskId}/recurrence`, { method: "DELETE" });
                     setRecurrence(null);
                   } else {
                     const nextDueDate = task?.dueDate ?? new Date().toISOString().slice(0, 10);
-                    const res = await fetch(`/api/pm/tasks/${taskId}/recurrence`, {
+                    const res = await apiFetch(`/api/pm/tasks/${taskId}/recurrence`, {
                       method: "POST", headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ frequency: freq, nextDueDate }),
                     });
@@ -1106,7 +1107,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
                 <span style={{ color: "var(--text-muted)" }}>{dep.type === "finish_to_start" ? "Waiting on" : "Blocks"}</span>
                 <span style={{ fontFamily: "monospace", fontSize: "11px" }}>{dep.dependsOnTaskId.slice(0, 8)}…</span>
                 <button onClick={async () => {
-                  await fetch(`/api/pm/tasks/${taskId}/dependencies/${dep.id}`, { method: "DELETE" });
+                  await apiFetch(`/api/pm/tasks/${taskId}/dependencies/${dep.id}`, { method: "DELETE" });
                   setDependencies(prev => prev.filter(d => d.id !== dep.id));
                 }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "12px", marginLeft: "auto" }}>×</button>
               </div>

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, use } from "react";
+import { apiFetch } from "@/lib/base-path";
 
 interface Stats { total: number; completed: number; overdue: number; completionRate: number; }
 
@@ -8,7 +9,7 @@ export default function StatsPage({ params }: { params: Promise<{ projectId: str
   const [stats, setStats] = useState<Stats | null>(null);
 
   useEffect(() => {
-    fetch(`/api/pm/projects/${projectId}/stats`).then(r => r.json()).then(setStats);
+    apiFetch(`/api/pm/projects/${projectId}/stats`).then(r => r.json()).then(setStats);
   }, [projectId]);
 
   if (!stats) return <div style={{ padding: "32px", color: "var(--text-muted)" }}>Loading...</div>;

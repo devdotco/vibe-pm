@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/base-path";
 
 interface Team {
   id: string;
@@ -44,7 +45,7 @@ function NewTeamModal({
     e.preventDefault();
     if (!name.trim()) return;
     setLoading(true);
-    const res = await fetch("/api/pm/teams", {
+    const res = await apiFetch("/api/pm/teams", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: name.trim(), description: description.trim() || undefined, icon }),
@@ -174,7 +175,7 @@ function AddMemberModal({
     if (!userId.trim()) return;
     setLoading(true);
     setError("");
-    const res = await fetch(`/api/pm/teams/${teamId}/members`, {
+    const res = await apiFetch(`/api/pm/teams/${teamId}/members`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: userId.trim(), role }),
@@ -226,8 +227,8 @@ export default function WorkspacesPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/pm/teams").then((r) => r.json()) as Promise<{ teams: Team[] }>,
-      fetch("/api/pm/projects").then((r) => r.json()) as Promise<{ projects: Project[] }>,
+      apiFetch("/api/pm/teams").then((r) => r.json()) as Promise<{ teams: Team[] }>,
+      apiFetch("/api/pm/projects").then((r) => r.json()) as Promise<{ projects: Project[] }>,
     ]).then(([teamsData, projectsData]) => {
       setTeams(teamsData.teams ?? []);
       setProjects(projectsData.projects ?? []);
@@ -237,7 +238,7 @@ export default function WorkspacesPage() {
 
   const loadMembers = async (teamId: string) => {
     if (members[teamId]) return;
-    const data = await fetch(`/api/pm/teams/${teamId}/members`).then((r) => r.json()) as { members: Member[] };
+    const data = await apiFetch(`/api/pm/teams/${teamId}/members`).then((r) => r.json()) as { members: Member[] };
     setMembers((m) => ({ ...m, [teamId]: data.members ?? [] }));
   };
 

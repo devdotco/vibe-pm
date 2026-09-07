@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   const secret = process.env.EMAIL_REPLY_SECRET;
   const sgKey = process.env.SENDGRID_API_KEY;
   const from = process.env.EMAIL_FROM ?? 'erp.io PM <noreply@vb.co>';
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://pm.vb.co';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.erp.io/pm';
 
   if (!secret || !sgKey) {
     return NextResponse.json({ error: 'Email not configured.' }, { status: 503 });

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { format, parseISO, isBefore } from "date-fns";
 import type { TaskCard, ProjectCard, Collaborator } from "./page";
+import { apiFetch } from "@/lib/base-path";
+import { withBase } from "@/lib/base-path";
 
 interface HomeDashboardClientProps {
   user: { id: string; name: string; email: string };
@@ -578,14 +580,14 @@ function NewProjectModal({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     if (!name.trim()) return;
     setLoading(true);
-    const res = await fetch("/api/pm/projects", {
+    const res = await apiFetch("/api/pm/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: name.trim(), color }),
     });
     if (res.ok) {
       const data = await res.json() as { project: { id: string } };
-      window.location.href = `/projects/${data.project.id}`;
+      window.location.href = withBase(`/projects/${data.project.id}`);
     }
     setLoading(false);
   };

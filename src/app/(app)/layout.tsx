@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { AppSwitcher } from "@/components/pm/AppSwitcher";
-import { Sidebar } from "@/components/pm/Sidebar";
+import { Sidebar, PmRail } from "@/components/pm/Sidebar";
+import { AppShell } from "@erp-ui";
 import { TopBar } from "@/components/pm/TopBar";
 import { getCurrentUser } from "@/lib/auth/session";
 
@@ -13,18 +13,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect(currentUrl ? `/sign-in?next=${encodeURIComponent(currentUrl)}` : "/sign-in");
   }
 
+  // No entitlement claim reaches this module, so the rail shows every live
+  // application. Per the suite rule, only a real entitlement answer may shrink
+  // it — a missing one must not.
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg)" }}>
-      {/* Narrow app-switcher strip */}
-      <AppSwitcher />
-      {/* Main sidebar */}
-      <Sidebar user={user} />
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <TopBar user={user} />
-        <main className="flex-1 overflow-auto">
-          {children}
-        </main>
-      </div>
-    </div>
+    <AppShell
+      moduleLabel="Projects"
+      rail={<PmRail />}
+      sidebar={<Sidebar user={user} />}
+    >
+      <TopBar user={user} />
+      <main className="flex-1 overflow-auto">{children}</main>
+    </AppShell>
   );
 }

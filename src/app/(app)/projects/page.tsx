@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/base-path";
+import { withBase } from "@/lib/base-path";
 
 interface Project {
   id: string;
@@ -66,7 +68,7 @@ function NewProjectModal({
     e.preventDefault();
     if (!name.trim()) return;
     setLoading(true);
-    const res = await fetch("/api/pm/projects", {
+    const res = await apiFetch("/api/pm/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: name.trim(), color }),
@@ -221,7 +223,7 @@ export default function ProjectsPage() {
   const [filter, setFilter] = useState<"all" | "active" | "completed">("all");
 
   useEffect(() => {
-    fetch("/api/pm/preferences")
+    apiFetch("/api/pm/preferences")
       .then((r) => r.json())
       .then((d: { preferences?: { hideCompletedProjects?: boolean } }) => {
         const hide = d.preferences?.hideCompletedProjects ?? false;
@@ -231,9 +233,9 @@ export default function ProjectsPage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/pm/projects")
+    apiFetch("/api/pm/projects")
       .then((r) => {
-        if (r.status === 401) { window.location.href = '/sign-in'; return null; }
+        if (r.status === 401) { window.location.href = withBase('/sign-in'); return null; }
         return r.json();
       })
       .then((d: { projects: Project[] } | null) => {

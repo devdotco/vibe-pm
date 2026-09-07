@@ -5,6 +5,7 @@ import { ProjectListView } from "@/components/pm/project/ProjectListView";
 import { KanbanBoard, KanbanBoardSkeleton } from "@/components/pm/board/KanbanBoard";
 import { TaskDetailPanel } from "@/components/pm/task/TaskDetailPanel";
 import PusherClient from "pusher-js";
+import { apiFetch } from "@/lib/base-path";
 
 interface Project { id: string; name: string; color: string; status: string; description: string | null; orgId: string; }
 interface Section { id: string; name: string; position: number; color?: string | null; }
@@ -39,9 +40,9 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
   const pusherRef = useRef<PusherClient | null>(null);
 
   useEffect(() => {
-    fetch(`/api/pm/projects/${projectId}`).then(r => r.json()).then(d => setProject(d.project));
-    fetch(`/api/pm/projects/${projectId}/sections`).then(r => r.json()).then(d => setSections(d.sections ?? []));
-    fetch(`/api/pm/projects/${projectId}/tasks`).then(r => r.json()).then(d => setTasks(d.tasks ?? []));
+    apiFetch(`/api/pm/projects/${projectId}`).then(r => r.json()).then(d => setProject(d.project));
+    apiFetch(`/api/pm/projects/${projectId}/sections`).then(r => r.json()).then(d => setSections(d.sections ?? []));
+    apiFetch(`/api/pm/projects/${projectId}/tasks`).then(r => r.json()).then(d => setTasks(d.tasks ?? []));
   }, [projectId]);
 
   // Pusher real-time subscriber
@@ -182,7 +183,7 @@ function MilestonesView({ projectId }: { projectId: string }) {
   const [editDesc, setEditDesc] = useState("");
 
   useEffect(() => {
-    fetch(`/api/pm/projects/${projectId}/milestones`)
+    apiFetch(`/api/pm/projects/${projectId}/milestones`)
       .then(r => r.json())
       .then(d => { setMilestones(d.milestones ?? []); setLoading(false); });
   }, [projectId]);
@@ -191,7 +192,7 @@ function MilestonesView({ projectId }: { projectId: string }) {
     e.preventDefault();
     if (!newTitle.trim() || !newDate) return;
     setSaving(true);
-    const res = await fetch(`/api/pm/projects/${projectId}/milestones`, {
+    const res = await apiFetch(`/api/pm/projects/${projectId}/milestones`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: newTitle.trim(), dueDate: newDate, description: newDesc.trim() || null }),
     });
@@ -205,7 +206,7 @@ function MilestonesView({ projectId }: { projectId: string }) {
 
   const toggleReached = async (ms: Milestone) => {
     const method = ms.status === "reached" ? "DELETE" : "POST";
-    const res = await fetch(`/api/pm/milestones/${ms.id}/reach`, { method });
+    const res = await apiFetch(`/api/pm/milestones/${ms.id}/reach`, { method });
     const d = await res.json();
     if (d.milestone) setMilestones(prev => prev.map(m => m.id === ms.id ? d.milestone : m));
   };
@@ -219,7 +220,7 @@ function MilestonesView({ projectId }: { projectId: string }) {
 
   const saveEdit = async (ms: Milestone) => {
     if (!editTitle.trim() || !editDate) return;
-    const res = await fetch(`/api/pm/milestones/${ms.id}`, {
+    const res = await apiFetch(`/api/pm/milestones/${ms.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: editTitle.trim(), dueDate: editDate, description: editDesc.trim() || null }),
     });
@@ -230,7 +231,7 @@ function MilestonesView({ projectId }: { projectId: string }) {
 
   const deleteMilestone = async (id: string) => {
     if (!confirm("Delete this milestone?")) return;
-    await fetch(`/api/pm/milestones/${id}`, { method: "DELETE" });
+    await apiFetch(`/api/pm/milestones/${id}`, { method: "DELETE" });
     setMilestones(prev => prev.filter(m => m.id !== id));
   };
 

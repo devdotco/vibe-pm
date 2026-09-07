@@ -8,6 +8,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { PriorityDot } from "@/components/pm/PriorityBadge";
+import { apiFetch } from "@/lib/base-path";
 
 interface Section { id: string; name: string; position: number; }
 interface Task { id: string; title: string; status: string; priority: string; dueDate: string | null; assigneeId: string | null; sectionId: string | null; position: number; labels: string[]; completedAt: string | null; }
@@ -219,7 +220,7 @@ export function KanbanBoard({ projectId, sections, tasks, setSections, setTasks,
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   useEffect(() => {
-    fetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
+    apiFetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
   }, []);
 
   const toggleSelect = useCallback((id: string) => {
@@ -232,7 +233,7 @@ export function KanbanBoard({ projectId, sections, tasks, setSections, setTasks,
 
   const runBulkAction = useCallback(async (action: string, value?: string) => {
     const taskIds = Array.from(selectedTaskIds);
-    const res = await fetch("/api/pm/tasks/bulk", {
+    const res = await apiFetch("/api/pm/tasks/bulk", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ taskIds, action, value }),
     });
@@ -275,14 +276,14 @@ export function KanbanBoard({ projectId, sections, tasks, setSections, setTasks,
     setTasks(tasks.map(t => t.id === draggedTask.id ? { ...t, sectionId: targetSectionId, position: newPosition } : t));
 
     // API call
-    await fetch(`/api/pm/tasks/${draggedTask.id}/move`, {
+    await apiFetch(`/api/pm/tasks/${draggedTask.id}/move`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sectionId: targetSectionId, position: newPosition }),
     });
   };
 
   const addTask = async (sectionId: string, title: string) => {
-    const res = await fetch("/api/pm/tasks", {
+    const res = await apiFetch("/api/pm/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId, sectionId, title }),
     });

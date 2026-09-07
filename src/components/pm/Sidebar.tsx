@@ -18,6 +18,11 @@ import {
   X,
 } from "lucide-react";
 import type { User } from "@/lib/db/schema";
+import { ModuleSidebar, AppRail, buildRailItems } from "@erp-ui";
+import type { ErpBrand } from "@erp-ui";
+import { ERP_MODULE_ICONS } from "@erp-ui/icons";
+import { withBase } from "@/lib/base-path";
+import { apiFetch } from "@/lib/base-path";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -195,7 +200,7 @@ function NewProjectModal({
     e.preventDefault();
     if (!name.trim()) return;
     setLoading(true);
-    const res = await fetch("/api/pm/projects", {
+    const res = await apiFetch("/api/pm/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: name.trim(), color, teamId }),
@@ -370,7 +375,7 @@ function NewTeamModal({
     e.preventDefault();
     if (!name.trim()) return;
     setLoading(true);
-    const res = await fetch("/api/pm/teams", {
+    const res = await apiFetch("/api/pm/teams", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: name.trim() }),
@@ -609,7 +614,7 @@ function GlobalSettingsModal({ onClose }: { onClose: () => void }) {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    fetch("/api/pm/preferences")
+    apiFetch("/api/pm/preferences")
       .then((r) => r.json())
       .then((d: { preferences: SavedUserPreferences }) => {
         if (d.preferences) setPrefs({ ...DEFAULT_PREFS, ...d.preferences });
@@ -628,7 +633,7 @@ function GlobalSettingsModal({ onClose }: { onClose: () => void }) {
 
   const save = async () => {
     setSaving(true);
-    await fetch("/api/pm/preferences", {
+    await apiFetch("/api/pm/preferences", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(prefs),
@@ -851,15 +856,15 @@ export function Sidebar({ user }: SidebarProps) {
   }, []);
 
   const loadData = useCallback(() => {
-    fetch("/api/pm/projects")
+    apiFetch("/api/pm/projects")
       .then((r) => r.json())
       .then((d: { projects: Project[] }) => setProjects(d.projects ?? []));
 
-    fetch("/api/pm/teams")
+    apiFetch("/api/pm/teams")
       .then((r) => r.json())
       .then((d: { teams: Team[] }) => setTeams(d.teams ?? []));
 
-    fetch("/api/pm/notifications")
+    apiFetch("/api/pm/notifications")
       .then((r) => r.json())
       .then((d: { notifications: Array<{ isRead: boolean }> }) => {
         const unread = (d.notifications ?? []).filter((n) => !n.isRead).length;
@@ -901,310 +906,97 @@ export function Sidebar({ user }: SidebarProps) {
   }
 
   return (
-    <aside
-      style={{
-        width: "220px",
-        flexShrink: 0,
-        background: "var(--sidebar-bg, #1e1f2e)",
-        borderRight: "1px solid rgba(255,255,255,0.06)",
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        overflowY: "auto",
-        overflowX: "hidden",
-        color: "var(--sidebar-text, #c1c4cf)",
-      }}
-    >
-      {/* Logo + Workspace switcher */}
-      <div
-        style={{
-          padding: "14px 12px 12px",
-          borderBottom: "1px solid rgba(255,255,255,0.07)",
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-        }}
-      >
-        <svg width="86" height="18" viewBox="0 0 86 18" fill="none">
-          <text x="0" y="14" fontFamily="var(--font-geist-sans), system-ui, sans-serif" fontWeight="700" fontSize="14" letterSpacing="-0.3" fill="var(--accent)">erp.io</text>
-          <text x="54" y="14" fontFamily="var(--font-geist-sans), system-ui, sans-serif" fontWeight="600" fontSize="13" fill="rgba(255,255,255,0.55)">PM</text>
-        </svg>
-      </div>
-
-      {/* Primary navigation */}
-      <nav style={{ padding: "6px 8px" }}>
-        <NavItem href="/home" icon={<Home size={15} />} label="Home" exact />
-        <NavItem href="/inbox" icon={<Inbox size={15} />} label="Inbox" badge={unreadCount} />
-        <NavItem href="/my-tasks" icon={<CheckSquare size={15} />} label="My Tasks" />
-        <NavItem href="/projects" icon={<FolderKanban size={15} />} label="Projects" exact />
-        <NavItem href="/portfolios" icon={<LayoutGrid size={15} />} label="Portfolios" />
-        <NavItem href="/admin/users" icon={<Users size={15} />} label="Members" />
-      </nav>
-
-      {/* Divider */}
-      <div
-        style={{
-          height: "1px",
-          background: "rgba(255,255,255,0.07)",
-          margin: "2px 8px 4px",
-        }}
-      />
-
-      {/* Workspaces sections */}
-      <div style={{ padding: "0 4px", flex: 1 }}>
-        {/* Workspace header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            padding: "6px 8px 2px",
-            justifyContent: "space-between",
-          }}
-        >
-          <span
-            style={{
-              fontSize: "10px",
-              fontWeight: 700,
-              color: "rgba(255,255,255,0.35)",
-              textTransform: "uppercase",
-              letterSpacing: "0.07em",
-            }}
-          >
-            Workspaces
-          </span>
-          <button
-            onClick={() => setShowNewTeam(true)}
-            title="New workspace"
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "rgba(255,255,255,0.35)",
-              display: "flex",
-              alignItems: "center",
-              padding: "0 2px",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.color =
-                "rgba(255,255,255,0.7)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.color =
-                "rgba(255,255,255,0.35)";
-            }}
-          >
-            <Plus size={14} />
-          </button>
-        </div>
-
-        {/* Each team's section */}
-        {teams.map((team) => (
-          <WorkspaceSection
-            key={team.id}
-            team={team}
-            projects={projectsByTeam[team.id] ?? []}
-            onAddProject={handleAddProject}
-          />
-        ))}
-
-        {/* Projects without a workspace */}
-        {noTeamProjects.length > 0 && (
-          <div style={{ marginTop: "8px" }}>
+    <>
+      <ModuleSidebar
+        moduleLabel="Projects"
+        moduleIcon={ERP_MODULE_ICONS.pm}
+        moduleHref="/home"
+        sections={[
+          {
+            items: [
+              { label: "Home", href: "/home", icon: Home, exact: true },
+              { label: "Inbox", href: "/inbox", icon: Inbox, badge: unreadCount },
+              { label: "My Tasks", href: "/my-tasks", icon: CheckSquare },
+              { label: "Projects", href: "/projects", icon: FolderKanban, exact: true },
+              { label: "Portfolios", href: "/portfolios", icon: LayoutGrid },
+              { label: "Members", href: "/admin/users", icon: Users },
+            ],
+          },
+        ]}
+        user={{ name: user.name, email: user.email }}
+        settingsHref="/admin/users"
+        /*
+         * A real sign-out. "Log out" here was an <a href="/sign-in"> — it
+         * navigated to the sign-in page and left the session cookie standing,
+         * so the next click put you straight back in. The route below clears
+         * the cookie at the mount path first.
+         */
+        signOutAction={withBase("/api/auth/sign-out")}
+        /* The workspace and project tree — genuinely Projects', and the reason
+           this module keeps a slot rather than a declared nav. */
+        scrollExtra={
+          <div>
             <div
               style={{
-                padding: "2px 12px",
-                fontSize: "11px",
-                fontWeight: 600,
-                color: "rgba(255,255,255,0.35)",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
               }}
             >
-              Other projects
+              <p className="erp-nav-section-label" style={{ marginBottom: 0 }}>
+                Workspaces
+              </p>
+              <button
+                onClick={() => setShowNewTeam(true)}
+                title="New workspace"
+                aria-label="New workspace"
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--erp-sidebar-text-muted)",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "0 8px 0 2px",
+                }}
+              >
+                <Plus size={14} />
+              </button>
             </div>
-            {noTeamProjects.map((p) => (
-              <ProjectLink key={p.id} project={p} />
+
+            {teams.map((team) => (
+              <WorkspaceSection
+                key={team.id}
+                team={team}
+                projects={projectsByTeam[team.id] ?? []}
+                onAddProject={handleAddProject}
+              />
             ))}
-          </div>
-        )}
 
-        {/* Add project (no team context) */}
-        <button
-          onClick={() => {
-            setNewProjectTeamId(undefined);
-            setShowNewProject(true);
-          }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "5px 10px",
-            marginTop: "4px",
-            width: "100%",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "rgba(255,255,255,0.35)",
-            fontSize: "12.5px",
-            borderRadius: "6px",
-            textAlign: "left",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background =
-              "rgba(255,255,255,0.07)";
-            (e.currentTarget as HTMLButtonElement).style.color =
-              "rgba(255,255,255,0.7)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "none";
-            (e.currentTarget as HTMLButtonElement).style.color =
-              "rgba(255,255,255,0.35)";
-          }}
-        >
-          <Plus size={14} />
-          Add project
-        </button>
-      </div>
+            {noTeamProjects.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <p className="erp-nav-section-label">Other projects</p>
+                {noTeamProjects.map((p) => (
+                  <ProjectLink key={p.id} project={p} />
+                ))}
+              </div>
+            )}
 
-      {/* User footer */}
-      <div ref={userMenuRef} style={{ position: "relative" }}>
-        {/* User menu popup */}
-        {showUserMenu && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: "calc(100% + 6px)",
-              left: "8px",
-              right: "8px",
-              background: "var(--bg-elevated)",
-              border: "1px solid var(--border)",
-              borderRadius: "8px",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-              overflow: "hidden",
-              zIndex: 500,
-            }}
-          >
-            <div
-              style={{
-                padding: "10px 12px 8px",
-                borderBottom: "1px solid var(--border)",
-              }}
-            >
-              <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {user.name}
-              </div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {user.email}
-              </div>
-            </div>
             <button
-              onClick={() => { setShowSettings(true); setShowUserMenu(false); }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                width: "100%",
-                padding: "9px 12px",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: "var(--text-secondary)",
-                fontSize: "13px",
-                textAlign: "left",
+              type="button"
+              className="erp-nav-row"
+              style={{ color: "var(--erp-sidebar-text-muted)", marginTop: 4 }}
+              onClick={() => {
+                setNewProjectTeamId(undefined);
+                setShowNewProject(true);
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.06)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
             >
-              <Settings size={14} />
-              Settings
+              <Plus size={15} className="erp-nav-icon" />
+              <span className="erp-nav-label">Add project</span>
             </button>
-            <div style={{ height: "1px", background: "var(--border)", margin: "0 8px" }} />
-            <a
-              href="/sign-in"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                width: "100%",
-                padding: "9px 12px",
-                background: "none",
-                color: "var(--text-muted)",
-                fontSize: "13px",
-                textDecoration: "none",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.06)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "none"; }}
-            >
-              <LogOut size={14} />
-              Log out
-            </a>
           </div>
-        )}
-
-        <button
-          onClick={() => setShowUserMenu((v) => !v)}
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderTop: "1px solid rgba(255,255,255,0.07)",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            background: showUserMenu ? "rgba(255,255,255,0.06)" : "none",
-            border: "none",
-            cursor: "pointer",
-            textAlign: "left",
-          }}
-          onMouseEnter={(e) => { if (!showUserMenu) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.05)"; }}
-          onMouseLeave={(e) => { if (!showUserMenu) (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
-        >
-          <div
-            style={{
-              width: "26px",
-              height: "26px",
-              borderRadius: "50%",
-              background: "var(--accent)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "white",
-              flexShrink: 0,
-            }}
-          >
-            {user.name.charAt(0).toUpperCase()}
-          </div>
-          <div style={{ overflow: "hidden", flex: 1 }}>
-            <div
-              style={{
-                fontSize: "12.5px",
-                fontWeight: 500,
-                color: "white",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {user.name}
-            </div>
-            <div
-              style={{
-                fontSize: "11px",
-                color: "rgba(255,255,255,0.45)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {user.email}
-            </div>
-          </div>
-          <span style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0, display: "flex" }}>
-            {showUserMenu ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-          </span>
-        </button>
-      </div>
+        }
+      />
 
       {/* Modals */}
       {showNewProject && (
@@ -1226,6 +1018,25 @@ export function Sidebar({ user }: SidebarProps) {
       {showSettings && (
         <GlobalSettingsModal onClose={() => setShowSettings(false)} />
       )}
-    </aside>
+    </>
+  );
+}
+
+
+/**
+ * The suite rail for Projects.
+ *
+ * Built here rather than in the layout, and it must stay that way: the layout
+ * is a server component and `buildRailItems()` returns items whose `icon` is a
+ * React component. Handing a function across that boundary compiles, typechecks
+ * and builds, then throws on every request.
+ */
+export function PmRail({ modules, brand }: { modules?: string[] | null; brand?: ErpBrand | null }) {
+  return (
+    <AppRail
+      items={buildRailItems({ enabled: modules ?? undefined })}
+      activeKey="pm"
+      brand={brand}
+    />
   );
 }

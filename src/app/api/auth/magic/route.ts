@@ -4,6 +4,7 @@ import { users, sessions } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
 import { COOKIE_NAME, sessionCookieOptions } from '@/lib/auth/session';
+import { withBase } from "@/lib/base-path";
 
 function hashToken(token: string) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -44,9 +45,9 @@ export async function GET(req: NextRequest) {
     expiresAt,
   });
 
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'pm.vb.co';
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'app.erp.io';
   const proto = req.headers.get('x-forwarded-proto') ?? 'https';
-  const res = NextResponse.redirect(new URL('/', `${proto}://${host}`));
+  const res = NextResponse.redirect(new URL(withBase('/'), `${proto}://${host}`));
   res.cookies.set(COOKIE_NAME, token, sessionCookieOptions());
 
   return res;

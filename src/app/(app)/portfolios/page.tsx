@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/base-path";
 
 interface Assignee { id: string; name: string; avatarUrl: string | null; }
 interface PortfolioProject {
@@ -122,7 +123,7 @@ export default function PortfolioPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/pm/portfolio')
+    apiFetch('/api/pm/portfolio')
       .then(r => r.json())
       .then(d => { setProjects(d.projects ?? []); setLoading(false); });
   }, []);

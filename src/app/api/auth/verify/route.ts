@@ -4,6 +4,7 @@ import { users, sessions } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
 import { COOKIE_NAME, sessionCookieOptions } from '@/lib/auth/session';
+import { withBase } from "@/lib/base-path";
 
 function verifyToken(token: string, secret: string): { email: string; expires: number } | null {
   const parts = token.split('.');
@@ -24,18 +25,18 @@ function hashToken(t: string) {
 
 export async function GET(req: NextRequest) {
   const secret = process.env.EMAIL_REPLY_SECRET;
-  if (!secret) return NextResponse.redirect(new URL('/sign-in', req.url));
+  if (!secret) return NextResponse.redirect(new URL(withBase('/sign-in'), req.url));
 
   const token = req.nextUrl.searchParams.get('token') ?? '';
   const next = req.nextUrl.searchParams.get('next') ?? '/my-tasks';
 
   const data = verifyToken(token, secret);
   if (!data || data.expires < Date.now()) {
-    return NextResponse.redirect(new URL('/sign-in?error=expired', req.url));
+    return NextResponse.redirect(new URL(withBase('/sign-in?error=expired'), req.url));
   }
 
   const [user] = await db.select().from(users).where(eq(users.email, data.email)).limit(1);
-  if (!user) return NextResponse.redirect(new URL('/sign-in?error=not_found', req.url));
+  if (!user) return NextResponse.redirect(new URL(withBase('/sign-in?error=not_found'), req.url));
 
   const sessionToken = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
     expiresAt,
   });
 
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'pm.vb.co';
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'app.erp.io';
   const proto = req.headers.get('x-forwarded-proto') ?? 'https';
   const res = NextResponse.redirect(new URL(next, `${proto}://${host}`));
   res.cookies.set(COOKIE_NAME, sessionToken, sessionCookieOptions());

@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
     ]).then(async ([[addedUser], [project]]) => {
       if (!addedUser?.email || !project) return;
       sgMail.setApiKey(apiKey);
-      const projectUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://pm.vb.co'}/projects/${projectId}`;
+      const projectUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.erp.io/pm'}/projects/${projectId}`;
       await sgMail.send({
         from: process.env.EMAIL_FROM ?? 'erp.io PM <notifications@vb.co>',
         to: addedUser.email,

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/base-path";
 
 interface Project {
   id: string; name: string; description: string | null; color: string; status: string;
@@ -28,13 +29,13 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/pm/projects/${projectId}`).then(r => r.json()).then(d => setProject(d.project));
-    fetch(`/api/pm/projects/${projectId}/settings`).then(r => r.json()).then(d => setSettings(d.settings));
+    apiFetch(`/api/pm/projects/${projectId}`).then(r => r.json()).then(d => setProject(d.project));
+    apiFetch(`/api/pm/projects/${projectId}/settings`).then(r => r.json()).then(d => setSettings(d.settings));
   }, [projectId]);
 
   const saveProject = async (patch: Partial<Project>) => {
     setSaving(true);
-    const res = await fetch(`/api/pm/projects/${projectId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+    const res = await apiFetch(`/api/pm/projects/${projectId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
     const d = await res.json();
     if (d.project) setProject(d.project);
     setSaving(false);
@@ -43,7 +44,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
   const saveSettings = async (patch: Partial<ProjectSettings>) => {
     const newSettings = { ...settings, ...patch };
     setSettings(newSettings as ProjectSettings);
-    await fetch(`/api/pm/projects/${projectId}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+    await apiFetch(`/api/pm/projects/${projectId}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
   };
 
   const TABS = ["general", "members", "messaging", "integrations", "automations", "import"];
@@ -285,7 +286,7 @@ function DeleteProjectButton({ projectId, projectName }: { projectId: string; pr
             disabled={input !== projectName || deleting}
             onClick={async () => {
               setDeleting(true);
-              await fetch(`/api/pm/projects/${projectId}`, { method: "DELETE" });
+              await apiFetch(`/api/pm/projects/${projectId}`, { method: "DELETE" });
               router.push("/projects");
             }}
             style={{ padding: "7px 14px", background: "#ef4444", color: "white", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer", opacity: (input !== projectName || deleting) ? 0.5 : 1 }}
@@ -310,8 +311,8 @@ function MembersTab({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/pm/projects/${projectId}/members`).then(r => r.json()),
-      fetch(`/api/pm/admin/users`).then(r => r.json()),
+      apiFetch(`/api/pm/projects/${projectId}/members`).then(r => r.json()),
+      apiFetch(`/api/pm/admin/users`).then(r => r.json()),
     ]).then(([membersData, usersData]) => {
       setMembers(membersData.members ?? []);
       setAllUsers(usersData.users ?? []);
@@ -326,7 +327,7 @@ function MembersTab({ projectId }: { projectId: string }) {
     e.preventDefault();
     if (!addUserId) return;
     setAdding(true);
-    const res = await fetch(`/api/pm/projects/${projectId}/members`, {
+    const res = await apiFetch(`/api/pm/projects/${projectId}/members`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: addUserId, role: addRole }),
@@ -348,7 +349,7 @@ function MembersTab({ projectId }: { projectId: string }) {
   };
 
   const removeMember = async (userId: string) => {
-    await fetch(`/api/pm/projects/${projectId}/members/${userId}`, { method: "DELETE" });
+    await apiFetch(`/api/pm/projects/${projectId}/members/${userId}`, { method: "DELETE" });
     setMembers(prev => prev.filter(m => m.userId !== userId));
   };
 
@@ -465,7 +466,7 @@ function IntegrationsTab({ projectId }: { projectId: string }) {
     : "https://chat.vb.co") + "/api/messaging/webhooks/pm";
 
   useEffect(() => {
-    fetch(`/api/pm/projects/${projectId}/channel-links`)
+    apiFetch(`/api/pm/projects/${projectId}/channel-links`)
       .then((r) => r.json())
       .then((d: { links: ChannelLink[] }) => {
         setLinks(d.links ?? []);
@@ -477,7 +478,7 @@ function IntegrationsTab({ projectId }: { projectId: string }) {
     e.preventDefault();
     if (!channelId.trim() || !channelName.trim()) return;
     setAdding(true);
-    const res = await fetch(`/api/pm/projects/${projectId}/channel-links`, {
+    const res = await apiFetch(`/api/pm/projects/${projectId}/channel-links`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ channelId: channelId.trim(), channelName: channelName.trim(), webhookUrl: defaultWebhookUrl }),
@@ -493,7 +494,7 @@ function IntegrationsTab({ projectId }: { projectId: string }) {
   };
 
   const removeLink = async (linkId: string) => {
-    await fetch(`/api/pm/projects/${projectId}/channel-links/${linkId}`, { method: "DELETE" });
+    await apiFetch(`/api/pm/projects/${projectId}/channel-links/${linkId}`, { method: "DELETE" });
     setLinks((prev) => prev.filter((l) => l.id !== linkId));
   };
 
@@ -565,11 +566,11 @@ function AutomationsTab({ projectId }: { projectId: string }) {
   const [showNew, setShowNew] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/pm/projects/${projectId}/automations`).then(r => r.json()).then(d => setAutomations(d.automations ?? []));
+    apiFetch(`/api/pm/projects/${projectId}/automations`).then(r => r.json()).then(d => setAutomations(d.automations ?? []));
   }, [projectId]);
 
   const toggle = async (id: string) => {
-    const res = await fetch(`/api/pm/automations/${id}/toggle`, { method: "PATCH" });
+    const res = await apiFetch(`/api/pm/automations/${id}/toggle`, { method: "PATCH" });
     const d = await res.json();
     setAutomations(a => a.map(x => x.id === id ? d.automation : x));
   };
@@ -661,7 +662,7 @@ function NewAutomationModal({ projectId, onClose, onCreated }: { projectId: stri
     e.preventDefault();
     if (!name.trim()) return;
     setLoading(true); setError("");
-    const res = await fetch(`/api/pm/projects/${projectId}/automations`, {
+    const res = await apiFetch(`/api/pm/projects/${projectId}/automations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -765,7 +766,7 @@ function ImportTab({ projectId }: { projectId: string }) {
     const form = new FormData();
     form.append('file', file);
     try {
-      const res = await fetch(`/api/pm/projects/${projectId}/import`, { method: 'POST', body: form });
+      const res = await apiFetch(`/api/pm/projects/${projectId}/import`, { method: 'POST', body: form });
       const d = await res.json();
       if (!res.ok) { setError(d.error ?? 'Import failed'); return; }
       setResult(d);

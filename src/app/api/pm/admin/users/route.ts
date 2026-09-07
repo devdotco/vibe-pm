@@ -25,7 +25,10 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.SENDGRID_API_KEY;
     if (apiKey) {
       sgMail.setApiKey(apiKey);
-      const magicLink = `https://pm.vb.co/api/auth/magic?secret=${process.env.BYPASS_SECRET}&email=${encodeURIComponent(email)}`;
+      // Built from the configured base, not a literal. This was hardcoded to
+      // pm.vb.co and went on mailing links to a host that no longer serves.
+      const base = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.erp.io/pm';
+      const magicLink = `${base}/api/auth/magic?secret=${process.env.BYPASS_SECRET}&email=${encodeURIComponent(email)}`;
       await sgMail.send({
         from: { email: 'noreply@vb.co', name: 'erp.io' },
         to: email,

@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow, isToday, isYesterday, parseISO } from "date-fns";
+import { apiFetch } from "@/lib/base-path";
 
 interface Notification {
   id: string; type: string; taskId: string | null; projectId: string | null;
@@ -27,19 +28,19 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/pm/notifications").then(r => r.json()).then(d => {
+    apiFetch("/api/pm/notifications").then(r => r.json()).then(d => {
       setNotifs(d.notifications ?? []);
       setLoading(false);
     });
   }, []);
 
   const markRead = async (id: string) => {
-    await fetch(`/api/pm/notifications/${id}/read`, { method: "PATCH" });
+    await apiFetch(`/api/pm/notifications/${id}/read`, { method: "PATCH" });
     setNotifs(n => n.map(x => x.id === id ? { ...x, isRead: true } : x));
   };
 
   const markAllRead = async () => {
-    await fetch("/api/pm/notifications/read-all", { method: "PATCH" });
+    await apiFetch("/api/pm/notifications/read-all", { method: "PATCH" });
     setNotifs(n => n.map(x => ({ ...x, isRead: true })));
   };
 

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, use } from "react";
+import { apiFetch, withBase } from "@/lib/base-path";
 
 interface Team { id: string; name: string; icon: string | null; description: string | null; }
 interface Project { id: string; name: string; color: string; status: string; teamId: string | null; }
@@ -30,10 +31,10 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ team
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/pm/teams/${teamId}`).then(r => r.json()),
-      fetch("/api/pm/projects").then(r => r.json()),
-      fetch(`/api/pm/teams/${teamId}/members`).then(r => r.json()),
-      fetch("/api/pm/admin/users").then(r => r.json()),
+      apiFetch(`/api/pm/teams/${teamId}`).then(r => r.json()),
+      apiFetch("/api/pm/projects").then(r => r.json()),
+      apiFetch(`/api/pm/teams/${teamId}/members`).then(r => r.json()),
+      apiFetch("/api/pm/admin/users").then(r => r.json()),
     ]).then(([td, pd, md, ud]) => {
       setTeam(td.team);
       setEditName(td.team?.name ?? "");
@@ -48,7 +49,7 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ team
 
   const saveSettings = async () => {
     setSaving(true);
-    const res = await fetch(`/api/pm/teams/${teamId}`, {
+    const res = await apiFetch(`/api/pm/teams/${teamId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: editName.trim(), description: editDesc.trim() || null, icon: editIcon }),
     });
@@ -61,7 +62,7 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ team
     e.preventDefault();
     if (!addUserId) return;
     setAddingMember(true);
-    const res = await fetch(`/api/pm/teams/${teamId}/members`, {
+    const res = await apiFetch(`/api/pm/teams/${teamId}/members`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: addUserId, role: addRole }),
     });
@@ -89,7 +90,7 @@ export default function WorkspaceDetailPage({ params }: { params: Promise<{ team
           <h1 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)" }}>{team.name}</h1>
           {team.description && <div style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "2px" }}>{team.description}</div>}
         </div>
-        <a href="/workspaces" style={{ marginLeft: "auto", fontSize: "13px", color: "var(--text-muted)", textDecoration: "none" }}>← All Workspaces</a>
+        <a href={withBase("/workspaces")} style={{ marginLeft: "auto", fontSize: "13px", color: "var(--text-muted)", textDecoration: "none" }}>← All Workspaces</a>
       </div>
 
       {/* Tabs */}

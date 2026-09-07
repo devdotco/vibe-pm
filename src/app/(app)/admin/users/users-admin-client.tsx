@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { apiFetch, withBase } from "@/lib/base-path";
 
 interface AdminUser {
   id: string;
@@ -18,7 +19,7 @@ export function UsersAdminClient({ initialUsers }: { initialUsers: AdminUser[] }
 
   const toggleStatus = async (userId: string, currentStatus: string) => {
     const newStatus = currentStatus === "active" ? "inactive" : "active";
-    const res = await fetch(`/api/pm/admin/users/${userId}`, {
+    const res = await apiFetch(`/api/pm/admin/users/${userId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
@@ -51,7 +52,7 @@ export function UsersAdminClient({ initialUsers }: { initialUsers: AdminUser[] }
 
       {/* Admin nav */}
       <div style={{ display: "flex", gap: "4px", marginBottom: "24px", borderBottom: "1px solid var(--border)", paddingBottom: "0" }}>
-        <a href="/admin/users" style={{ padding: "8px 16px", fontSize: "14px", fontWeight: 600, color: "var(--accent)", borderBottom: "2px solid var(--accent)", textDecoration: "none" }}>Users</a>
+        <a href={withBase("/admin/users")} style={{ padding: "8px 16px", fontSize: "14px", fontWeight: 600, color: "var(--accent)", borderBottom: "2px solid var(--accent)", textDecoration: "none" }}>Users</a>
       </div>
 
       <div style={{ border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden" }}>
@@ -129,7 +130,7 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
     e.preventDefault();
     if (!name.trim() || !email.trim()) return;
     setLoading(true); setError("");
-    const res = await fetch("/api/pm/admin/users", {
+    const res = await apiFetch("/api/pm/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: name.trim(), email: email.trim() }),

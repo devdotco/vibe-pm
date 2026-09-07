@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { PriorityDot } from "@/components/pm/PriorityBadge";
 import { StatusBadge } from "@/components/pm/StatusBadge";
+import { apiFetch } from "@/lib/base-path";
 
 export default function SearchPage() {
   const searchParams = useSearchParams();
@@ -15,7 +16,7 @@ export default function SearchPage() {
   useEffect(() => {
     if (!q || q.length < 2) { setResults([]); return; }
     setLoading(true);
-    fetch(`/api/pm/search?q=${encodeURIComponent(q)}&type=${type}`)
+    apiFetch(`/api/pm/search?q=${encodeURIComponent(q)}&type=${type}`)
       .then(r => r.json())
       .then(d => { setResults(d.results ?? []); setLoading(false); });
   }, [q, type]);

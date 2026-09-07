@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, parseISO, isBefore, startOfDay, endOfDay, addDays } from "date-fns";
+import { apiFetch } from "@/lib/base-path";
+import { withBase } from "@/lib/base-path";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -406,7 +408,7 @@ export default function MyTasksPage() {
   const [showSort, setShowSort] = useState(false);
 
   const loadTasks = useCallback(() => {
-    fetch("/api/pm/tasks/my")
+    apiFetch("/api/pm/tasks/my")
       .then(r => r.json())
       .then((d: { tasks: TaskRow[] }) => { setRows(d.tasks ?? []); setLoading(false); });
   }, []);
@@ -415,9 +417,9 @@ export default function MyTasksPage() {
 
   const toggleComplete = useCallback(async (taskId: string, status: string) => {
     if (status === "completed") {
-      await fetch(`/api/pm/tasks/${taskId}/reopen`, { method: "POST" });
+      await apiFetch(`/api/pm/tasks/${taskId}/reopen`, { method: "POST" });
     } else {
-      await fetch(`/api/pm/tasks/${taskId}/complete`, { method: "POST" });
+      await apiFetch(`/api/pm/tasks/${taskId}/complete`, { method: "POST" });
     }
     loadTasks();
   }, [loadTasks]);
@@ -488,7 +490,7 @@ export default function MyTasksPage() {
 
           {/* Toolbar */}
           <div style={{ display: "flex", gap: "4px", paddingBottom: "8px", position: "relative" }}>
-            <button onClick={() => (window.location.href = "/projects")} style={{ padding: "5px 12px", fontSize: "12px", background: "var(--accent)", color: "white", border: "none", borderRadius: "5px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontWeight: 500 }}>
+            <button onClick={() => (window.location.href = withBase("/projects"))} style={{ padding: "5px 12px", fontSize: "12px", background: "var(--accent)", color: "white", border: "none", borderRadius: "5px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontWeight: 500 }}>
               <span style={{ fontSize: "14px" }}>+</span> Add task <span style={{ fontSize: "10px", opacity: 0.7 }}>▾</span>
             </button>
             <button onClick={() => setShowFilter(f => !f)} style={tbtn(hasActiveFilter || showFilter)}>

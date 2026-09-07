@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { apiFetch } from "@/lib/base-path";
 
 function SignInForm() {
   const searchParams = useSearchParams();
@@ -18,7 +19,7 @@ function SignInForm() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/auth/send-magic", {
+      const res = await apiFetch("/api/auth/send-magic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), next }),

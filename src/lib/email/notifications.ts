@@ -9,7 +9,7 @@ function parseFrom(s: string): { email: string; name?: string } {
 const FROM = parseFrom(process.env.EMAIL_FROM ?? 'erp.io PM <notifications@vb.co>');
 const REPLY_DOMAIN = process.env.EMAIL_REPLY_DOMAIN ?? 'reply.vb.co';
 const REPLY_SECRET = process.env.EMAIL_REPLY_SECRET ?? 'dev-secret';
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://pm.vb.co';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.erp.io/pm';
 
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

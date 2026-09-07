@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { format, parseISO } from "date-fns";
+import { apiFetch } from "@/lib/base-path";
 
 interface Goal {
   id: string; title: string; description: string | null; status: string;
@@ -47,9 +48,9 @@ export default function GoalsPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/pm/goals").then(r => r.json()),
-      fetch("/api/pm/teams").then(r => r.json()),
-      fetch("/api/pm/projects").then(r => r.json()),
+      apiFetch("/api/pm/goals").then(r => r.json()),
+      apiFetch("/api/pm/teams").then(r => r.json()),
+      apiFetch("/api/pm/projects").then(r => r.json()),
     ]).then(([gd, td, pd]) => {
       setGoals(gd.goals ?? []);
       setTeams(td.teams ?? []);
@@ -59,7 +60,7 @@ export default function GoalsPage() {
   }, []);
 
   const updateGoal = async (goalId: string, patch: Partial<Goal>) => {
-    const res = await fetch(`/api/pm/goals/${goalId}`, {
+    const res = await apiFetch(`/api/pm/goals/${goalId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
@@ -78,7 +79,7 @@ export default function GoalsPage() {
     } else {
       next.add(goalId);
       if (!goalLinks[goalId]) {
-        const res = await fetch(`/api/pm/goals/${goalId}/project-links`);
+        const res = await apiFetch(`/api/pm/goals/${goalId}/project-links`);
         const d = await res.json();
         setGoalLinks(prev => ({ ...prev, [goalId]: d.links ?? [] }));
       }
@@ -87,7 +88,7 @@ export default function GoalsPage() {
   };
 
   const linkProject = async (goalId: string, projectId: string) => {
-    const res = await fetch(`/api/pm/goals/${goalId}/project-links`, {
+    const res = await apiFetch(`/api/pm/goals/${goalId}/project-links`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId }),
     });
@@ -98,7 +99,7 @@ export default function GoalsPage() {
   };
 
   const unlinkProject = async (goalId: string, linkId: string) => {
-    await fetch(`/api/pm/goals/${goalId}/project-links/${linkId}`, { method: "DELETE" });
+    await apiFetch(`/api/pm/goals/${goalId}/project-links/${linkId}`, { method: "DELETE" });
     setGoalLinks(prev => ({ ...prev, [goalId]: (prev[goalId] ?? []).filter(l => l.id !== linkId) }));
   };
 
@@ -360,7 +361,7 @@ function NewGoalModal({
     e.preventDefault();
     if (!title.trim()) return;
     setLoading(true); setError("");
-    const res = await fetch("/api/pm/goals", {
+    const res = await apiFetch("/api/pm/goals", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

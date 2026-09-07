@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { sessions, users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
+import { BASE_PATH } from "@/lib/base-path";
 
 /**
  * This app's own session cookie.
@@ -67,8 +68,14 @@ export async function createSessionToken(userId: string): Promise<string> {
 /**
  * The cookie options every session cookie must use.
  *
- * No `domain`: host-scoped to pm.vb.co on purpose. A `.vb.co` cookie is what
- * let this app and the shell tread on each other.
+ * No `domain`: host-scoped on purpose. A `.vb.co` cookie is what let this app
+ * and the shell tread on each other.
+ *
+ * `path` is the MOUNT, not `/`. Every module in the suite now shares the
+ * app.erp.io origin, so a root-path cookie would be sent to all of them — and
+ * more to the point, sign-out deletes by path: a delete at `/pm` cannot clear a
+ * cookie written at `/`, so signing out would appear to do nothing. Every
+ * writer and the delete must agree.
  */
 export function sessionCookieOptions() {
   return {
@@ -76,6 +83,6 @@ export function sessionCookieOptions() {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     maxAge: SESSION_TTL_SECONDS,
-    path: "/",
+    path: BASE_PATH,
   };
 }

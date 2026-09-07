@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { Search, Plus } from "lucide-react";
 import type { User } from "@/lib/db/schema";
+import { apiFetch } from "@/lib/base-path";
 
 interface TopBarProps {
   user: User;
@@ -191,7 +192,7 @@ function NewTaskModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch("/api/pm/projects").then(r => r.json()).then(d => {
+    apiFetch("/api/pm/projects").then(r => r.json()).then(d => {
       const ps = d.projects ?? [];
       setProjects(ps);
       if (ps.length > 0) setProjectId(ps[0].id);
@@ -202,7 +203,7 @@ function NewTaskModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
     e.preventDefault();
     if (!title.trim() || !projectId) return;
     setLoading(true);
-    await fetch("/api/pm/tasks", {
+    await apiFetch("/api/pm/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: title.trim(), projectId, priority }),
