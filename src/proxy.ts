@@ -65,6 +65,30 @@ export function proxy(req: NextRequest) {
      * unaffected — those links already point at the hand-off endpoint, which
      * lands on /api/auth/callback above.
      */
+  /*
+   * FAST PATH. Signed in to the suite but not yet to this module: go straight
+   * through the hand-off rather than showing a local sign-in.
+   *
+   * Only possible since the modules were collapsed onto one origin — the
+   * shell's cookie is scoped to app.erp.io, so it now arrives with this
+   * request. On the old subdomain it never did, which is why every module
+   * switch had to start from the shell and cost three round trips.
+   *
+   * The local sign-in still stands for anyone with no shell session at all —
+   * people invited straight to a board or a document, who have no erp.io
+   * account to be handed off from.
+   *
+   * `next` is the UNMOUNTED path: the module's callback adds the mount back
+   * with withBase, and sign-erp's withBase is deliberately not idempotent.
+   */
+  if (req.cookies.get("__vibe_session")?.value) {
+    const shell = (process.env.SHELL_URL ?? "https://app.erp.io").replace(/\/$/, "");
+    const handoff = new URL(`${shell}/api/shell/auth/module-token`);
+    handoff.searchParams.set("aud", "pm");
+    handoff.searchParams.set("next", `${req.nextUrl.pathname}${req.nextUrl.search}`);
+    return NextResponse.redirect(handoff);
+  }
+
     return NextResponse.redirect(
       // withBase: an app-absolute path resolved against the ORIGIN replaces the
       // whole pathname, so this would land on the shell's sign-in.
