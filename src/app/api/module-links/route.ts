@@ -18,8 +18,13 @@ export async function GET(req: NextRequest) {
   if (!me) return NextResponse.json({ records: [] });
 
   const email = req.nextUrl.searchParams.get("email")?.trim().toLowerCase();
-  const q = req.nextUrl.searchParams.get("q")?.trim();
-  if (!email && !q) return NextResponse.json({ records: [] });
+  const rawQ = req.nextUrl.searchParams.get("q");
+  const q = rawQ?.trim();
+  // A `q` that is present but blank asks for the MOST RECENT projects — what
+  // the CRM's attach picker opens with, so the common case ("the project we
+  // just made for them") needs no typing.
+  const wantsRecent = rawQ !== null && !q;
+  if (!email && !q && !wantsRecent) return NextResponse.json({ records: [] });
 
   let rows: { id: string; name: string; status: string | null; createdAt: Date | null }[] = [];
 
@@ -52,7 +57,11 @@ export async function GET(req: NextRequest) {
     rows = await db
       .select({ id: projects.id, name: projects.name, status: projects.status, createdAt: projects.createdAt })
       .from(projects)
-      .where(and(eq(projects.orgId, me.orgId), ilike(projects.name, `%${q}%`)))
+      .where(
+        wantsRecent
+          ? eq(projects.orgId, me.orgId)
+          : and(eq(projects.orgId, me.orgId), ilike(projects.name, `%${q}%`)),
+      )
       .orderBy(desc(projects.createdAt))
       .limit(25);
   }
