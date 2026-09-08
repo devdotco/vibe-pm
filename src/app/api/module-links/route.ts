@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, desc, eq, ilike, inArray } from "drizzle-orm";
+import { and, desc, eq, ilike } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { projects, projectMembers, users } from "@/lib/db/schema";
+import { projects, tasks, users } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/session";
 import { verifyModuleToken } from "@/lib/auth/module-token";
 
@@ -9,9 +9,13 @@ import { verifyModuleToken } from "@/lib/auth/module-token";
  * The cross-module link contract, implemented for Projects.
  * See packages/erp-ui/module-links.ts for the shape.
  *
- * A project belongs to a person because they are a MEMBER of it — that is the
- * only association this module has, and it is the one worth surfacing on a
- * contact.
+ * TASKS, not projects. A project is the container; the work somebody is waiting
+ * on is a task, and that is what belongs on a contact record. A project also
+ * says almost nothing on its own — "SEO.co" against a contact is not a fact
+ * anybody can act on, where "Draft the Q3 audit, due Friday" is.
+ *
+ * A task belongs to a person because they are its ASSIGNEE — the only direct
+ * association this module has between a task and a human.
  *
  * Authenticated by this module's own session when called from a browser, and by
  * a shell-minted hand-off token when another module calls it.
@@ -58,6 +62,15 @@ async function resolveCaller(req: NextRequest) {
   return preferred ?? (active.length === 1 ? active[0] : null);
 }
 
+/** The stored status values, as somebody would say them. */
+const STATUS_LABEL: Record<string, string> = {
+  not_started: "Not started",
+  in_progress: "In progress",
+  blocked: "Blocked",
+  done: "Done",
+  completed: "Completed",
+};
+
 export async function GET(req: NextRequest) {
   const me = await resolveCaller(req);
   if (!me) return NextResponse.json({ records: [] });
@@ -71,7 +84,27 @@ export async function GET(req: NextRequest) {
   const wantsRecent = rawQ !== null && !q;
   if (!email && !q && !wantsRecent) return NextResponse.json({ records: [] });
 
-  let rows: { id: string; name: string; status: string | null; createdAt: Date | null }[] = [];
+  let rows: {
+    id: string;
+    title: string;
+    status: string | null;
+    dueDate: string | null;
+    createdAt: Date | null;
+    projectId: string;
+    projectName: string;
+  }[] = [];
+
+  // The project name rides along as the subtitle: a task title on its own
+  // ("Kickoff call") is ambiguous across a workspace.
+  const columns = {
+    id: tasks.id,
+    title: tasks.title,
+    status: tasks.status,
+    dueDate: tasks.dueDate,
+    createdAt: tasks.createdAt,
+    projectId: tasks.projectId,
+    projectName: projects.name,
+  };
 
   if (email) {
     // The person, IN THIS ORGANISATION. Looking up by email alone would find
@@ -83,43 +116,38 @@ export async function GET(req: NextRequest) {
       .limit(1);
     if (!person) return NextResponse.json({ records: [] });
 
-    const memberships = await db
-      .select({ projectId: projectMembers.projectId })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.orgId, me.orgId), eq(projectMembers.userId, person.id)))
-      .limit(200);
-
-    const ids = [...new Set(memberships.map((m) => m.projectId))];
-    if (ids.length === 0) return NextResponse.json({ records: [] });
-
     rows = await db
-      .select({ id: projects.id, name: projects.name, status: projects.status, createdAt: projects.createdAt })
-      .from(projects)
-      .where(and(eq(projects.orgId, me.orgId), inArray(projects.id, ids)))
-      .orderBy(desc(projects.createdAt))
+      .select(columns)
+      .from(tasks)
+      .innerJoin(projects, eq(projects.id, tasks.projectId))
+      .where(and(eq(tasks.orgId, me.orgId), eq(tasks.assigneeId, person.id)))
+      .orderBy(desc(tasks.createdAt))
       .limit(25);
   } else {
     rows = await db
-      .select({ id: projects.id, name: projects.name, status: projects.status, createdAt: projects.createdAt })
-      .from(projects)
+      .select(columns)
+      .from(tasks)
+      .innerJoin(projects, eq(projects.id, tasks.projectId))
       .where(
         wantsRecent
-          ? eq(projects.orgId, me.orgId)
-          : and(eq(projects.orgId, me.orgId), ilike(projects.name, `%${q}%`)),
+          ? eq(tasks.orgId, me.orgId)
+          : and(eq(tasks.orgId, me.orgId), ilike(tasks.title, `%${q}%`)),
       )
-      .orderBy(desc(projects.createdAt))
+      .orderBy(desc(tasks.createdAt))
       .limit(25);
   }
 
   const base = (process.env.APP_URL ?? "https://app.erp.io/pm").replace(/\/$/, "");
   return NextResponse.json(
     {
-      records: rows.map((p) => ({
-        id: p.id,
-        title: p.name,
-        url: `${base}/projects/${p.id}`,
-        status: p.status ?? undefined,
-        at: p.createdAt?.toISOString(),
+      records: rows.map((t) => ({
+        id: t.id,
+        title: t.title,
+        subtitle: t.dueDate ? `${t.projectName} · due ${t.dueDate}` : t.projectName,
+        // The task's own view, inside its project.
+        url: `${base}/projects/${t.projectId}?task=${t.id}`,
+        status: STATUS_LABEL[t.status ?? ""] ?? t.status ?? undefined,
+        at: t.createdAt?.toISOString(),
       })),
     },
     { headers: { "Cache-Control": "no-store" } },
