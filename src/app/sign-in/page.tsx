@@ -5,6 +5,20 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { apiFetch } from "@/lib/base-path";
 
+/*
+ * Where to send someone for the shell hand-off.
+ *
+ * This is an ADDRESS (where the browser goes), not the token's `iss` claim,
+ * which stays "https://app.vb.co" as a stable signer name — see
+ * lib/auth/module-token.ts. The two were the same string until the estate
+ * moved to erp.io; conflating them is what broke every hand-off before.
+ *
+ * Hardcoding the address is what stranded people here: app.vb.co is retired,
+ * so the button below dropped them on a host where they have no session and
+ * the endpoint answers 401. NEXT_PUBLIC_* because this is a client component.
+ */
+const SHELL_URL = (process.env.NEXT_PUBLIC_SHELL_URL ?? "https://app.erp.io").replace(/\/$/, "");
+
 function SignInForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/my-tasks";
@@ -82,13 +96,13 @@ function SignInForm() {
             </p>
 
             {/*
-              For people who have an app.vb.co account this is one click — the
+              For people who have an erp.io shell account this is one click — the
               shell mints a hand-off token and sends them back signed in. The
               magic-link form below stays the default, because plenty of people
               are invited straight to a board and have no shell account at all.
             */}
             <a
-              href={`https://app.vb.co/api/shell/auth/module-token?aud=pm&next=${encodeURIComponent(next)}`}
+              href={`${SHELL_URL}/api/shell/auth/module-token?aud=pm&next=${encodeURIComponent(next)}`}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
                 width: "100%", height: "44px", borderRadius: "10px",
