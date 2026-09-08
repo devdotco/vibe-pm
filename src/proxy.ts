@@ -5,6 +5,16 @@ import { stripBase, withBase } from "@/lib/base-path";
 const PUBLIC = [
   // The shell redirects here with a hand-off token. Gating it would bounce the
   // token to /sign-in and the SSO round-trip could never complete.
+  // The cross-module link endpoint. A DATA call, never a navigation — so it
+  // must never be answered with a redirect. Left private, the proxy sent the
+  // CRM's server-to-server fetch off to the SSO hand-off, `fetch` followed it,
+  // and the caller got a sign-in page with a 200 on it. `res.json()` then threw
+  // and the whole thing surfaced as "no results", which looks like an empty
+  // workspace rather than a redirect.
+  //
+  // Safe to exempt: the route authenticates with this module's own session and
+  // returns an empty list when there is none. It is fail-closed on its own.
+  "/api/module-links",
   "/api/auth/callback",
   "/api/auth/magic",
   "/api/auth/send-magic",
