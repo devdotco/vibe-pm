@@ -3,6 +3,7 @@ import { and, desc, eq, ilike, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, projectMembers, users } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/session";
+import { verifyModuleToken } from "@/lib/auth/module-token";
 
 /**
  * The cross-module link contract, implemented for Projects.
@@ -10,11 +11,55 @@ import { getCurrentUser } from "@/lib/auth/session";
  *
  * A project belongs to a person because they are a MEMBER of it — that is the
  * only association this module has, and it is the one worth surfacing on a
- * contact. Authenticated by this module's own session, so the answer is scoped
- * to what the person asking can see here, not to what CRM can see.
+ * contact.
+ *
+ * Authenticated by this module's own session when called from a browser, and by
+ * a shell-minted hand-off token when another module calls it.
+ *
+ * THE TOKEN IS NOT AN OPTIMISATION — it is the only thing that works. This
+ * app's session cookie is set with `path: /pm`, so a browser never sends it to
+ * /crm and the cookie header the CRM forwards genuinely does not contain it.
+ * Every module scopes its cookie to its own mount for the same good reason
+ * (sign-out deletes by path), so cookie forwarding was never going to
+ * authenticate any of them — and it failed silently, as "you have no projects".
  */
+
+/** Who is asking: this app's session, or a verified shell token. */
+async function resolveCaller(req: NextRequest) {
+  const local = await getCurrentUser();
+  if (local) return local;
+
+  const auth = req.headers.get("authorization");
+  if (!auth?.startsWith("Bearer ")) return null;
+
+  let identity;
+  try {
+    identity = await verifyModuleToken(auth.slice(7).trim());
+  } catch {
+    return null;
+  }
+
+  // The token proves an email at the shell. It does NOT say which of this app's
+  // accounts that is, so resolve it to a real row and use THAT row's org.
+  //
+  // The org named on the token is preferred. Falling back to a lone row for the
+  // address is deliberate and is not the adopt-by-email hazard: nothing is
+  // created here, and a single existing account for a proven email is not
+  // ambiguous about whose it is. With more than one there is a real choice to
+  // make and no basis for making it, so nothing is returned.
+  const rows = await db
+    .select({ id: users.id, orgId: users.orgId, status: users.status })
+    .from(users)
+    .where(eq(users.email, identity.email))
+    .limit(5);
+
+  const active = rows.filter((r) => r.status === "active");
+  const preferred = active.find((r) => r.orgId === identity.shellOrgId);
+  return preferred ?? (active.length === 1 ? active[0] : null);
+}
+
 export async function GET(req: NextRequest) {
-  const me = await getCurrentUser();
+  const me = await resolveCaller(req);
   if (!me) return NextResponse.json({ records: [] });
 
   const email = req.nextUrl.searchParams.get("email")?.trim().toLowerCase();
