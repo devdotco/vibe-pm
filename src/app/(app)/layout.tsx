@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { Sidebar, PmRail } from "@/components/pm/Sidebar";
-import { AppShell } from "@erp-ui";
+import { AppShell, AgentDock } from "@erp-ui";
 import { TopBar } from "@/components/pm/TopBar";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listShellOrgs } from "@/lib/auth/shell-orgs";
@@ -37,6 +37,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     >
       <TopBar user={user} />
       <main className="flex-1 overflow-auto">{children}</main>
+      {/* The assistant. Inside the frame so it is present on every page of
+          this module rather than remembered per page. */}
+      <AgentDock moduleKey="pm" />
     </AppShell>
   );
 }
