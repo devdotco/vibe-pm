@@ -12,6 +12,7 @@ import { sendTaskAssignedEmail } from '@/lib/email/notifications';
 import { validate, CreateTaskSchema } from '@/lib/validate';
 import { rateLimit } from '@/lib/rate-limit';
 import { autoWatch } from '@/lib/watchers';
+import { autoAttachForms } from '@/lib/forms/service';
 
 export async function GET(req: NextRequest) {
   const user = await requireUser();
@@ -74,6 +75,11 @@ export async function POST(req: NextRequest) {
     if (assigneeId && assigneeId !== user.id) await autoWatch(task.id, user.orgId, assigneeId, tx);
     return [task];
   });
+
+  // Forms set to auto-attach in this project. Best-effort and awaited, so the
+  // response already carries them — the task drawer opens showing the
+  // checklist rather than gaining one a moment later.
+  await autoAttachForms(task);
 
   // async: fire webhook + pusher
   dispatchEvent({ eventType: 'task.created', orgId: user.orgId, projectId, taskId: task.id, triggeredBy: user.id, data: { title } });

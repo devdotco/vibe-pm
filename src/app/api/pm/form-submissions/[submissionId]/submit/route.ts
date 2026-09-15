@@ -46,5 +46,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ su
   }
 
   const crm = await syncSubmissionToCrm(submitted, { email: user.email, name: user.name });
-  return NextResponse.json({ submission: submitted, crm });
+  // Re-read: the sync writes crm_synced_at / crm_sync_error, and `submitted` was
+  // captured before it ran — returning that row makes a successful sync look
+  // like a failed one in the UI.
+  const fresh = (await getSubmission(user.orgId, sub.id)) ?? submitted;
+  return NextResponse.json({ submission: fresh, crm });
 }
