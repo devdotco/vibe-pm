@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks } from '@/lib/db/schema';
+import { tasks, sections } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { pusherServer, projectChannel } from '@/lib/pusher/server';
@@ -14,10 +14,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
   const [existing] = await db.select().from(tasks)
     .where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt)));
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (typeof position !== 'number' || !Number.isFinite(position)) {
+    return NextResponse.json({ error: 'position must be a number' }, { status: 400 });
+  }
+  // A section from another project (or another org) would hide the task from every board.
+  if (sectionId != null) {
+    const [s] = await db.select({ id: sections.id }).from(sections)
+      .where(and(eq(sections.id, String(sectionId)), eq(sections.projectId, existing.projectId), eq(sections.orgId, user.orgId)));
+    if (!s) return NextResponse.json({ error: 'Section not found' }, { status: 400 });
+  }
 
   const [task] = await db.transaction(async (tx) => {
     const [updated] = await tx.update(tasks).set({ sectionId, position, updatedAt: new Date() })
-      .where(eq(tasks.id, taskId)).returning();
+      .where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId))).returning();
     if (sectionId !== existing.sectionId) {
       await logActivity({
         taskId, projectId: existing.projectId, orgId: user.orgId, userId: user.id,

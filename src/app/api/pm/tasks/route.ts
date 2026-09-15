@@ -33,6 +33,28 @@ export async function POST(req: NextRequest) {
   if (!v.success) return v.response;
   const { projectId, sectionId, title, description, priority, assigneeId, dueDate, dueTime, startDate, labels, parentTaskId, estimatedMinutes } = v.data;
 
+  // The project, and every id hanging off it, must be in the caller's
+  // organization. Without this a task could be created — carrying the caller's
+  // org_id — inside another tenant's project, where project-scoped views show it.
+  const [project] = await db.select({ id: projects.id }).from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.orgId, user.orgId))).limit(1);
+  if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  if (sectionId) {
+    const [s] = await db.select({ id: sections.id }).from(sections)
+      .where(and(eq(sections.id, sectionId), eq(sections.projectId, projectId), eq(sections.orgId, user.orgId))).limit(1);
+    if (!s) return NextResponse.json({ error: 'Section not found' }, { status: 400 });
+  }
+  if (assigneeId) {
+    const [u] = await db.select({ id: users.id }).from(users)
+      .where(and(eq(users.id, assigneeId), eq(users.orgId, user.orgId))).limit(1);
+    if (!u) return NextResponse.json({ error: 'Assignee not found' }, { status: 400 });
+  }
+  if (parentTaskId) {
+    const [pt] = await db.select({ id: tasks.id }).from(tasks)
+      .where(and(eq(tasks.id, parentTaskId), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt))).limit(1);
+    if (!pt) return NextResponse.json({ error: 'Parent task not found' }, { status: 400 });
+  }
+
   // get first position in section so new tasks land at the top
   const existing = await db.select({ position: tasks.position }).from(tasks)
     .where(and(eq(tasks.projectId, projectId), sectionId ? eq(tasks.sectionId, sectionId) : isNull(tasks.sectionId), isNull(tasks.deletedAt)))
