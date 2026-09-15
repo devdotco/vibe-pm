@@ -7,25 +7,31 @@ import { eq, and, ne, isNull, count, sql } from 'drizzle-orm';
 export async function GET() {
   const user = await requireUser();
 
-  // Get all projects the user can see
+  // Get all projects the user can see. The join to `projects` is org-scoped
+  // in its own right, not just via project_members.orgId — a membership row
+  // can name any project id (see the ownership check added to the members
+  // POST route), so without this a foreign project's name, tasks and
+  // assignees would ride along into this dashboard.
   const memberProjects = await db
     .select({ project: projects, teamName: teams.name })
     .from(projectMembers)
-    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .innerJoin(projects, and(eq(projectMembers.projectId, projects.id), eq(projects.orgId, user.orgId)))
     .leftJoin(teams, eq(projects.teamId, teams.id))
     .where(and(eq(projectMembers.userId, user.id), eq(projectMembers.orgId, user.orgId), ne(projects.status, 'archived')));
 
   const today = new Date().toISOString().slice(0, 10);
 
   const result = await Promise.all(memberProjects.map(async ({ project, teamName }) => {
-    // Task counts
+    // Task counts — org-filtered defensively, on top of `project` already
+    // being confirmed in the caller's org above.
     const [totalRow] = await db.select({ count: count() }).from(tasks)
-      .where(and(eq(tasks.projectId, project.id), isNull(tasks.deletedAt)));
+      .where(and(eq(tasks.projectId, project.id), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt)));
     const [completedRow] = await db.select({ count: count() }).from(tasks)
-      .where(and(eq(tasks.projectId, project.id), eq(tasks.status, 'completed'), isNull(tasks.deletedAt)));
+      .where(and(eq(tasks.projectId, project.id), eq(tasks.orgId, user.orgId), eq(tasks.status, 'completed'), isNull(tasks.deletedAt)));
     const [overdueRow] = await db.select({ count: count() }).from(tasks)
       .where(and(
         eq(tasks.projectId, project.id),
+        eq(tasks.orgId, user.orgId),
         isNull(tasks.deletedAt),
         ne(tasks.status, 'completed'),
         sql`${tasks.dueDate} IS NOT NULL AND ${tasks.dueDate} < ${today}`,
@@ -51,7 +57,7 @@ export async function GET() {
       .from(taskAssignees)
       .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
       .innerJoin(users, eq(taskAssignees.userId, users.id))
-      .where(and(eq(tasks.projectId, project.id), isNull(tasks.deletedAt)))
+      .where(and(eq(tasks.projectId, project.id), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt)))
       .limit(6);
 
     // Also add tasks with assigneeId directly
@@ -59,7 +65,7 @@ export async function GET() {
       .selectDistinct({ id: users.id, name: users.name, avatarUrl: users.avatarUrl })
       .from(tasks)
       .innerJoin(users, eq(tasks.assigneeId, users.id))
-      .where(and(eq(tasks.projectId, project.id), isNull(tasks.deletedAt)))
+      .where(and(eq(tasks.projectId, project.id), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt)))
       .limit(6);
 
     const allAssignees = [...assigneeRows];
@@ -72,7 +78,7 @@ export async function GET() {
       .select({ goalTitle: goals.title })
       .from(goalProjectLinks)
       .innerJoin(goals, eq(goalProjectLinks.goalId, goals.id))
-      .where(eq(goalProjectLinks.projectId, project.id))
+      .where(and(eq(goalProjectLinks.projectId, project.id), eq(goalProjectLinks.orgId, user.orgId)))
       .limit(1);
 
     return {
