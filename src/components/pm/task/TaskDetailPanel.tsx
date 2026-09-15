@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { formatDistanceToNow, parseISO, isValid } from "date-fns";
 import { apiFetch } from "@/lib/base-path";
+import { TaskFormsPanel } from "@/components/pm/forms/TaskFormsPanel";
 
 function safeRelativeTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
@@ -399,6 +400,8 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // Forms still unsubmitted on this task; completing with any open is worth a warning.
+  const [openFormCount, setOpenFormCount] = useState(0);
   const [comment, setComment] = useState("");
   const [postingComment, setPostingComment] = useState(false);
   const [commentError, setCommentError] = useState("");
@@ -617,6 +620,16 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
 
   const complete = async () => {
     if (!task) return;
+    // Jobber's "incomplete job forms": completing a visit whose checklist is
+    // half-filled is almost always a mis-tap, and the missing answers are the
+    // compliance record. Warn, but never block — the office sometimes has to
+    // close a job the tech could not finish.
+    if (task.status !== "completed" && openFormCount > 0) {
+      const ok = window.confirm(
+        `${openFormCount} form${openFormCount === 1 ? " on this task has" : "s on this task have"} not been submitted. Complete the task anyway?`,
+      );
+      if (!ok) return;
+    }
     await apiFetch(`/api/pm/tasks/${taskId}/complete`, { method: "POST" });
     setTask(t => t ? { ...t, status: "completed", completedAt: new Date().toISOString() } : t);
   };
@@ -1092,6 +1105,9 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
               </div>
             )}
           </div>
+
+          {/* Forms */}
+          <TaskFormsPanel taskId={taskId} onOpenCount={setOpenFormCount} />
 
           {/* Dependencies */}
           <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
