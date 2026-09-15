@@ -6,10 +6,13 @@ import { eq, and } from 'drizzle-orm';
 
 export async function GET() {
   const user = await requireUser();
+  // teamMembers.orgId matching the caller isn't enough — a membership row's
+  // teamId could point at a team in a different org (see the ownership
+  // check added to the members POST route). Join on teams.orgId too.
   const rows = await db
     .select({ team: teams })
     .from(teamMembers)
-    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+    .innerJoin(teams, and(eq(teamMembers.teamId, teams.id), eq(teams.orgId, user.orgId)))
     .where(and(eq(teamMembers.userId, user.id), eq(teamMembers.orgId, user.orgId)));
   return NextResponse.json({ teams: rows.map(r => r.team) });
 }

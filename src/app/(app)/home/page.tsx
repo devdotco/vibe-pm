@@ -104,10 +104,15 @@ export default async function HomePage() {
   const completedTasks: TaskCard[] = completedTaskRows;
 
   // ── Recent Projects ────────────────────────────────────────────────────────
+  // Joined on projects.orgId too, not just project_members.orgId: a
+  // project_members row only proves the CALLER is in this org, not that the
+  // project it names is (see the ownership check added to the members POST
+  // route) — without this a foreign project's name/color/status could show
+  // up here, and its task counts below.
   const recentProjectRows = await db
     .select({ project: projects })
     .from(projectMembers)
-    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .innerJoin(projects, and(eq(projectMembers.projectId, projects.id), eq(projects.orgId, user.orgId)))
     .where(
       and(
         eq(projectMembers.userId, user.id),
@@ -131,6 +136,7 @@ export default async function HomePage() {
       .where(
         and(
           inArray(tasks.projectId, projectIds),
+          eq(tasks.orgId, user.orgId),
           ne(tasks.status, "completed"),
           isNull(tasks.deletedAt),
           gte(tasks.dueDate, todayStr),

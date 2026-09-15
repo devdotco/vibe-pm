@@ -499,8 +499,16 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   useEffect(() => {
     const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
     if (!pusherKey) { console.warn('[Pusher] NEXT_PUBLIC_PUSHER_KEY is not set — real-time updates disabled'); return; }
-    const pusher = new Pusher(pusherKey, { cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER ?? "us2" });
-    const ch = pusher.subscribe(`task-${taskId}`);
+    // authEndpoint added along with the private- prefix below: this channel
+    // used to be a plain public one, so pusher-js never needed to call an
+    // authorizer at all — subscribing was the whole story. A private channel
+    // with no authEndpoint just fails to subscribe.
+    const pusher = new Pusher(pusherKey, {
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER ?? "us2",
+      authEndpoint: "/api/pusher/auth",
+    });
+    // Must match taskChannel() in src/lib/pusher/server.ts.
+    const ch = pusher.subscribe(`private-task-${taskId}`);
     const refreshFeed = () => {
       apiFetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
     };
@@ -513,7 +521,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     };
     ch.bind('task.comment', refreshFeed);
     ch.bind('task.updated', refreshAll);
-    return () => { pusher.unsubscribe(`task-${taskId}`); pusher.disconnect(); };
+    return () => { pusher.unsubscribe(`private-task-${taskId}`); pusher.disconnect(); };
   }, [taskId]);
 
   const save = useCallback((patch: Partial<Task>) => {

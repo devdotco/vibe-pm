@@ -11,6 +11,6 @@ export async function PATCH(_req: NextRequest, { params }: { params: Promise<{ a
     .where(and(eq(automations.id, autoId), eq(automations.orgId, user.orgId)));
   if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const [auto] = await db.update(automations).set({ isEnabled: !current.isEnabled })
-    .where(eq(automations.id, autoId)).returning();
+    .where(and(eq(automations.id, autoId), eq(automations.orgId, user.orgId))).returning();
   return NextResponse.json({ automation: auto });
 }

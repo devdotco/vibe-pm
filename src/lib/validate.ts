@@ -84,3 +84,61 @@ export const BulkActionSchema = z.object({
   ]),
   value: z.string().optional(),
 });
+
+/**
+ * PATCH allow-lists for the other `.set({...body})` mass-assignment routes
+ * (orgId/projectId/id/createdBy — and anything else not listed — were all
+ * writable before these existed; see the audit that added them). Same
+ * reasoning as UpdateTaskSchema above: unknown keys are stripped, not
+ * rejected, so an older client sending extra fields keeps working.
+ */
+export const UpdateProjectSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(5_000).nullable(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  icon: z.string().max(10).nullable(),
+  defaultView: z.enum(['list', 'board', 'calendar', 'timeline']),
+  isPublic: z.boolean(),
+  teamId: z.string().uuid().nullable(),
+  startDate: isoDate.nullable(),
+  dueDate: isoDate.nullable(),
+  status: z.enum(['active', 'on_hold', 'completed', 'archived']),
+}).partial();
+
+export const UpdateGoalSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().max(5_000).nullable(),
+  dueDate: isoDate.nullable(),
+  teamId: z.string().uuid().nullable(),
+  status: z.enum(['on_track', 'at_risk', 'off_track', 'completed']),
+  progressType: z.enum(['percent', 'number', 'boolean']),
+  // The column is Postgres `numeric`, which drizzle types as string.
+  progressValue: z.union([z.string(), z.number()]).transform(String),
+  targetValue: z.union([z.string(), z.number()]).transform(String),
+}).partial();
+
+export const UpdateMilestoneSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().max(5_000).nullable(),
+  dueDate: isoDate,
+}).partial();
+
+export const UpdateTeamSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(2_000).nullable(),
+  icon: z.string().max(10).nullable(),
+}).partial();
+
+export const UpdateProjectSettingsSchema = z.object({
+  messagingChannelId: z.string().max(200).nullable(),
+  notifyOn: z.array(z.string().max(50)).max(20),
+}).partial();
+
+export const UpdateAutomationSchema = z.object({
+  name: z.string().min(1).max(200),
+  triggerType: z.string().min(1).max(100),
+  triggerConditions: z.record(z.string(), z.unknown()).nullable(),
+  actionType: z.string().min(1).max(100),
+  actionParams: z.record(z.string(), z.unknown()).nullable(),
+  isEnabled: z.boolean(),
+}).partial();
