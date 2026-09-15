@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks, taskActivity } from '@/lib/db/schema';
+import { tasks, taskActivity, users, sections } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { validate, BulkActionSchema } from '@/lib/validate';
 import { rateLimit } from '@/lib/rate-limit';
@@ -25,6 +25,22 @@ export async function POST(req: NextRequest) {
 
   if (owned.length !== taskIds.length) {
     return NextResponse.json({ error: 'One or more tasks not found' }, { status: 403 });
+  }
+
+  // `value` (the assignee or section id for 'assign'/'move_section') was
+  // never checked against the org — it just got written straight onto every
+  // task. Not a cross-tenant read on its own (nothing here is scoped by
+  // assigneeId/sectionId), but a bad id silently corrupts the task instead
+  // of failing the request.
+  if (action === 'assign' && value) {
+    const [u] = await db.select({ id: users.id }).from(users)
+      .where(and(eq(users.id, value), eq(users.orgId, user.orgId))).limit(1);
+    if (!u) return NextResponse.json({ error: 'Assignee not found' }, { status: 400 });
+  }
+  if (action === 'move_section' && value) {
+    const [s] = await db.select({ id: sections.id }).from(sections)
+      .where(and(eq(sections.id, value), eq(sections.orgId, user.orgId))).limit(1);
+    if (!s) return NextResponse.json({ error: 'Section not found' }, { status: 400 });
   }
 
   const now = new Date();

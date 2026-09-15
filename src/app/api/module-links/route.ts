@@ -46,11 +46,15 @@ async function resolveCaller(req: NextRequest) {
   // The token proves an email at the shell. It does NOT say which of this app's
   // accounts that is, so resolve it to a real row and use THAT row's org.
   //
-  // The org named on the token is preferred. Falling back to a lone row for the
-  // address is deliberate and is not the adopt-by-email hazard: nothing is
-  // created here, and a single existing account for a proven email is not
-  // ambiguous about whose it is. With more than one there is a real choice to
-  // make and no basis for making it, so nothing is returned.
+  // The org named on the token is required, full stop — no fallback.
+  //
+  // This used to fall back to a lone active account for the address when
+  // none matched identity.shellOrgId, on the theory that a single existing
+  // account isn't ambiguous about whose it is. But "ambiguous" was the wrong
+  // question: the token names a SPECIFIC org, and a caller minting one for
+  // org A whose email happens to have its only PM account in unrelated org B
+  // would get handed org B's account and data — a cross-org leak dressed up
+  // as "not ambiguous." No match means no result.
   const rows = await db
     .select({ id: users.id, orgId: users.orgId, status: users.status })
     .from(users)
@@ -58,8 +62,7 @@ async function resolveCaller(req: NextRequest) {
     .limit(5);
 
   const active = rows.filter((r) => r.status === "active");
-  const preferred = active.find((r) => r.orgId === identity.shellOrgId);
-  return preferred ?? (active.length === 1 ? active[0] : null);
+  return active.find((r) => r.orgId === identity.shellOrgId) ?? null;
 }
 
 /** The stored status values, as somebody would say them. */
