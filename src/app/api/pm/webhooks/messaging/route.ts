@@ -51,13 +51,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    // Find creator user by email if provided
+    // Find creator user by email if provided, WITHIN THE PROJECT'S ORG.
+    //
+    // This looked up by email alone, so a creatorEmail that happened to match
+    // someone in a different organization attributed the task to that
+    // stranger's account there — and their name/email then went out in the
+    // task-assigned notification.
     let creatorId = project.createdBy;
     if (creatorEmail) {
       const [u] = await db
         .select({ id: users.id })
         .from(users)
-        .where(eq(users.email, creatorEmail))
+        .where(and(eq(users.email, creatorEmail), eq(users.orgId, project.orgId)))
         .limit(1);
       if (u) creatorId = u.id;
     }

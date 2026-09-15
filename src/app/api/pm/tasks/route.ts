@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
   // fire cross-app webhook
   const [proj] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, projectId)).limit(1);
   if (proj) {
-    fireProjectWebhooks(projectId, 'task.created', {
+    fireProjectWebhooks(user.orgId, projectId, 'task.created', {
       taskId: task.id,
       taskTitle: task.title,
       projectName: proj.name,

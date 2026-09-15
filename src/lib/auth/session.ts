@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { sessions, users } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, gt } from "drizzle-orm";
 import crypto from "crypto";
 import { BASE_PATH } from "@/lib/base-path";
 
@@ -24,7 +24,7 @@ export const COOKIE_NAME = "__vibe_pm_session";
 /** Long enough to feel persistent, short enough to expire an abandoned laptop. */
 export const SESSION_TTL_SECONDS = 90 * 24 * 60 * 60;
 
-function hashToken(token: string): string {
+export function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
@@ -33,11 +33,19 @@ export async function getCurrentUser() {
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
 
+  /*
+   * This never compared `expiresAt`, so a session outlived the cookie that
+   * carried it: `sessionCookieOptions().maxAge` expires the COOKIE at 90 days,
+   * but the row underneath stayed valid forever. Anyone who had captured a
+   * token — a synced browser profile, a shared machine, a logged request —
+   * kept a working session indefinitely, with no way for the person who
+   * issued it to make it stop working just by waiting.
+   */
   const [row] = await db
     .select({ user: users })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
-    .where(eq(sessions.tokenHash, hashToken(token)))
+    .where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date())))
     .limit(1);
 
   if (row?.user.status === "active") return row.user;

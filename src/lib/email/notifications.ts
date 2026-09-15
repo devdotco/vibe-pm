@@ -8,10 +8,19 @@ function parseFrom(s: string): { email: string; name?: string } {
 }
 const FROM = parseFrom(process.env.EMAIL_FROM ?? 'erp.io PM <notifications@vb.co>');
 const REPLY_DOMAIN = process.env.EMAIL_REPLY_DOMAIN ?? 'reply.vb.co';
-const REPLY_SECRET = process.env.EMAIL_REPLY_SECRET ?? 'dev-secret';
+/*
+ * No fallback. `?? 'dev-secret'` meant every deploy that forgot to set
+ * EMAIL_REPLY_SECRET — or had it typo'd in the env — signed reply addresses
+ * with a literal string that ships in this repo. Anyone who read it could
+ * compute a valid `reply+t-<taskId>-<token>@...` for ANY task id and forge an
+ * inbound reply as anyone, bypassing the inbound route's provider check
+ * entirely (see the fail-closed check in verifyReplyAddress below, and the
+ * per-branch secret check added to the inbound route).
+ */
+const REPLY_SECRET = process.env.EMAIL_REPLY_SECRET ?? '';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.erp.io/pm';
 
-function escapeHtml(s: string) {
+export function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
@@ -82,6 +91,11 @@ function restoreUuid(s: string) {
 }
 
 export function verifyReplyAddress(toAddress: string, fromEmail: string): { type: string; entityId: string } | null {
+  // No secret configured means no token was ever computed with real entropy
+  // (see REPLY_SECRET above) — refuse to verify anything rather than compare
+  // against a value every reply address in this state would also have been
+  // signed with.
+  if (!REPLY_SECRET) return null;
   const match = toAddress.match(/reply\+([a-z])-([0-9a-f]{32})-([0-9a-f]{16})@/);
   if (!match) return null;
   const [, code, shortId, token] = match;
@@ -132,17 +146,28 @@ function taskUrl(taskId: string) {
   return `${APP_URL}/tasks/${taskId}`;
 }
 
+/*
+ * taskTitle/actorName/projectName all come from user-editable data (a task
+ * title, a display name, a project name) and used to go straight into the
+ * HTML body unescaped. A title like `<img src=x onerror=...>` would have run
+ * in whatever mail client rendered it. formatCommentHtml already escapes
+ * commentText line by line; these three needed the same treatment at the
+ * call site.
+ */
 export async function sendTaskAssignedEmail(data: TaskNotificationData) {
   const url = data.taskUrl ?? taskUrl(data.taskId);
   const replyTo = replyAddress('task', data.taskId, data.recipientEmail);
+  const taskTitle = escapeHtml(data.taskTitle);
+  const actorName = escapeHtml(data.actorName);
+  const projectName = escapeHtml(data.projectName);
   await sendNotification(
     data.recipientEmail,
     `You've been assigned: ${data.taskTitle}`,
     `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
       <h2 style="font-size:18px;margin-bottom:8px">New task assigned</h2>
-      <p style="color:#666;margin-bottom:16px">${data.actorName} assigned you a task in <strong>${data.projectName}</strong>:</p>
+      <p style="color:#666;margin-bottom:16px">${actorName} assigned you a task in <strong>${projectName}</strong>:</p>
       <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px">
-        <strong style="font-size:16px">${data.taskTitle}</strong>
+        <strong style="font-size:16px">${taskTitle}</strong>
       </div>
       <a href="${url}" style="display:inline-block;background:#2563eb;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
       <p style="color:#9ca3af;font-size:12px;margin-top:24px">Reply to this email to leave a comment on the task without logging in.</p>
@@ -154,14 +179,17 @@ export async function sendTaskAssignedEmail(data: TaskNotificationData) {
 export async function sendTaskMentionEmail(data: TaskNotificationData) {
   const url = data.taskUrl ?? taskUrl(data.taskId);
   const replyTo = replyAddress('task', data.taskId, data.recipientEmail);
+  const taskTitle = escapeHtml(data.taskTitle);
+  const actorName = escapeHtml(data.actorName);
+  const projectName = escapeHtml(data.projectName);
   await sendNotification(
     data.recipientEmail,
     `${data.actorName} mentioned you in: ${data.taskTitle}`,
     `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
       <h2 style="font-size:18px;margin-bottom:8px">You were mentioned</h2>
-      <p style="color:#666;margin-bottom:16px">${data.actorName} mentioned you in <strong>${data.projectName}</strong>:</p>
+      <p style="color:#666;margin-bottom:16px">${actorName} mentioned you in <strong>${projectName}</strong>:</p>
       <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px">
-        <strong style="font-size:16px;display:block;margin-bottom:8px">${data.taskTitle}</strong>
+        <strong style="font-size:16px;display:block;margin-bottom:8px">${taskTitle}</strong>
         ${data.commentText ? `<div style="color:#374151;font-size:14px;line-height:1.6">${formatCommentHtml(data.commentText)}</div>` : ''}
       </div>
       <a href="${url}" style="display:inline-block;background:#2563eb;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>
@@ -174,14 +202,17 @@ export async function sendTaskMentionEmail(data: TaskNotificationData) {
 export async function sendTaskCommentEmail(data: TaskNotificationData) {
   const url = data.taskUrl ?? taskUrl(data.taskId);
   const replyTo = replyAddress('task', data.taskId, data.recipientEmail);
+  const taskTitle = escapeHtml(data.taskTitle);
+  const actorName = escapeHtml(data.actorName);
+  const projectName = escapeHtml(data.projectName);
   await sendNotification(
     data.recipientEmail,
     `New comment on: ${data.taskTitle}`,
     `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
       <h2 style="font-size:18px;margin-bottom:8px">New comment</h2>
-      <p style="color:#666;margin-bottom:16px">${data.actorName} commented on a task in <strong>${data.projectName}</strong>:</p>
+      <p style="color:#666;margin-bottom:16px">${actorName} commented on a task in <strong>${projectName}</strong>:</p>
       <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px">
-        <strong style="font-size:16px;display:block;margin-bottom:8px">${data.taskTitle}</strong>
+        <strong style="font-size:16px;display:block;margin-bottom:8px">${taskTitle}</strong>
         ${data.commentText ? `<blockquote style="border-left:3px solid #2563eb;padding-left:12px;color:#374151;margin:0;font-size:14px;line-height:1.6">${formatCommentHtml(data.commentText)}</blockquote>` : ''}
       </div>
       <a href="${url}" style="display:inline-block;background:#2563eb;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View task</a>

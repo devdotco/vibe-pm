@@ -113,7 +113,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
   const [proj] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, existing.projectId)).limit(1);
   if (proj) {
     const webhookEvent = task.status === 'completed' ? 'task.completed' : 'task.updated';
-    fireProjectWebhooks(existing.projectId, webhookEvent, {
+    fireProjectWebhooks(user.orgId, existing.projectId, webhookEvent, {
       taskId: task.id,
       taskTitle: task.title,
       projectName: proj.name,

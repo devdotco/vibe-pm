@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { db } from '@/lib/db';
 import { taskComments, tasks, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { verifyReplyAddress, stripQuotedReply } from '@/lib/email/notifications';
 import { pusherServer } from '@/lib/pusher/server';
+import { timingSafeEqual } from '@/lib/auth/service';
 
 export async function POST(req: NextRequest) {
   let from: string, to: string, text: string;
@@ -14,7 +16,8 @@ export async function POST(req: NextRequest) {
   if (contentType.includes('application/json')) {
     // Internal proxy call from messaging app
     const secret = req.headers.get('x-internal-secret');
-    if (!secret || secret !== (process.env.EMAIL_REPLY_SECRET ?? '')) {
+    const configured = process.env.EMAIL_REPLY_SECRET;
+    if (!configured || !secret || !timingSafeEqual(secret, configured)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const body = await req.json();
@@ -22,8 +25,33 @@ export async function POST(req: NextRequest) {
     to = body.to ?? '';
     text = body.text ?? '';
   } else {
-    // Direct from SendGrid or Mailgun (form data)
+    /*
+     * Direct from Mailgun (form data). This branch had NO auth check at all —
+     * this route is on the proxy's public list (mail providers can't send a
+     * session cookie), so anyone could POST form-data here shaped like an
+     * inbound email and have it processed as one. The reply-address HMAC
+     * still gated which task/project got a comment, but with EMAIL_REPLY_SECRET
+     * unset (see notifications.ts) that token was forgeable too — the two
+     * bugs stacked into "anyone can post as anyone, on any task."
+     *
+     * Mailgun signs every inbound webhook with timestamp+token+signature;
+     * verifying it here is what actually proves the request came from
+     * Mailgun and not an arbitrary POST. See
+     * https://documentation.mailgun.com/en/latest/user_manual.html#webhooks
+     */
     const form = await req.formData();
+    const timestamp = form.get('timestamp') as string | null;
+    const token = form.get('token') as string | null;
+    const signature = form.get('signature') as string | null;
+    const signingKey = process.env.MAILGUN_WEBHOOK_KEY;
+    if (!signingKey || !timestamp || !token || !signature) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const expected = crypto.createHmac('sha256', signingKey).update(`${timestamp}${token}`).digest('hex');
+    if (!timingSafeEqual(expected, signature)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     from = (form.get('from') as string | null) ?? '';
     const rawEnvelope = (form.get('envelope') as string | null) ?? '{}';
     const envelope = JSON.parse(rawEnvelope);
@@ -67,26 +95,23 @@ export async function POST(req: NextRequest) {
     if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
     /*
-     * Find or create the sender IN THE TASK'S ORGANIZATION.
+     * Find the sender IN THE TASK'S ORGANIZATION. Do NOT create one.
      *
-     * This looked the sender up by email alone and created them in the literal
-     * 'platform_default'. Both halves were wrong: the lookup could return a
-     * person's account in a different workspace and attribute the reply to it,
-     * and the insert dropped new senders into a shared legacy org regardless of
-     * whose task they had replied to.
+     * This looked the sender up by email alone (could return a person's
+     * account in a different workspace and attribute the reply to it) and, if
+     * nobody matched, INSERTED a brand-new `status: 'active'` user from
+     * whatever `from` address was on the envelope — a header anyone sending
+     * mail controls. That combined with the missing secret check above into a
+     * free way to mint an active account, with a real seat, in any org whose
+     * reply-token secret you could compute. A reply from an address with no
+     * matching account in this org is dropped instead.
      */
-    let [user] = await db.select().from(users)
+    const [user] = await db.select().from(users)
       .where(and(eq(users.email, fromEmail), eq(users.orgId, task.orgId)))
       .limit(1);
     if (!user) {
-      const name = from.replace(/<[^>]+>/, '').trim() || fromEmail.split('@')[0]!;
-      const [created] = await db.insert(users).values({
-        orgId: task.orgId,
-        email: fromEmail,
-        name,
-        status: 'active',
-      }).returning();
-      user = created!;
+      console.warn('[pm-inbound] no matching user for reply, dropping', { taskId, fromEmail });
+      return NextResponse.json({ ok: true });
     }
 
     // Insert comment sourced from email
