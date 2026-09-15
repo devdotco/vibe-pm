@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { goals, goalProjectLinks } from "@/lib/db/schema";
+import { goals, goalProjectLinks, projects } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/session";
 import { eq, and } from "drizzle-orm";
 
@@ -29,6 +29,11 @@ export async function POST(
   const [goal] = await db.select({ id: goals.id }).from(goals)
     .where(and(eq(goals.id, goalId), eq(goals.orgId, user.orgId)));
   if (!goal) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // projectId was never checked against the org either — a goal could be
+  // linked to any project id while the link row itself carried this org.
+  const [project] = await db.select({ id: projects.id }).from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.orgId, user.orgId))).limit(1);
+  if (!project) return NextResponse.json({ error: "Project not found" }, { status: 400 });
   const [link] = await db.insert(goalProjectLinks)
     .values({ goalId, projectId, orgId: user.orgId })
     .onConflictDoNothing()

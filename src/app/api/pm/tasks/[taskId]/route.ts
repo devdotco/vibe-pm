@@ -124,9 +124,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
   }
 
   // ── Automation engine ──────────────────────────────────────────────────────
+  // projectId alone used to select which automations run here. A projectId
+  // is only ever unique to one org in practice, but the automations POST
+  // route used to let a caller plant a row against ANY projectId while
+  // stamping their own orgId on it (now fixed) — this org filter is the
+  // second half of closing that off, so a stray cross-org row can't run
+  // just because it happens to still exist.
   try {
     const activeAutomations = await db.select().from(automations)
-      .where(and(eq(automations.projectId, existing.projectId), eq(automations.isEnabled, true)));
+      .where(and(eq(automations.projectId, existing.projectId), eq(automations.orgId, user.orgId), eq(automations.isEnabled, true)));
 
     for (const auto of activeAutomations) {
       let triggered = false;
@@ -146,8 +152,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
 
       const params = auto.actionParams as Record<string, string> | null ?? {};
 
+      // taskId/auto.id are already confirmed to belong to `user.orgId` (via
+      // `existing` and the automations select above); the org predicate here
+      // is defense in depth so these writes can never touch a row in another
+      // org even if that upstream guarantee is ever loosened.
       if (auto.actionType === 'change_status' && params.status) {
-        await db.update(tasks).set({ status: params.status, updatedAt: new Date() }).where(eq(tasks.id, taskId));
+        await db.update(tasks).set({ status: params.status, updatedAt: new Date() })
+          .where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId)));
       } else if (auto.actionType === 'assign_user' && params.userId) {
         await db.insert(taskAssignees)
           .values({ taskId, userId: params.userId, orgId: user.orgId })
@@ -155,16 +166,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
       } else if (auto.actionType === 'add_label' && params.label) {
         const current = (task.labels ?? []) as string[];
         if (!current.includes(params.label)) {
-          await db.update(tasks).set({ labels: [...current, params.label], updatedAt: new Date() }).where(eq(tasks.id, taskId));
+          await db.update(tasks).set({ labels: [...current, params.label], updatedAt: new Date() })
+            .where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId)));
         }
       } else if (auto.actionType === 'move_section' && params.sectionId) {
-        await db.update(tasks).set({ sectionId: params.sectionId, updatedAt: new Date() }).where(eq(tasks.id, taskId));
+        await db.update(tasks).set({ sectionId: params.sectionId, updatedAt: new Date() })
+          .where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId)));
       }
 
       // bump run count
       await db.update(automations)
         .set({ runCount: (auto.runCount ?? 0) + 1, lastRunAt: new Date() })
-        .where(eq(automations.id, auto.id));
+        .where(and(eq(automations.id, auto.id), eq(automations.orgId, user.orgId)));
     }
   } catch {
     // automation errors must never fail the response

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { webhookOutbox, projectSettings } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 const MESSAGING_WEBHOOK_URL = process.env.MESSAGING_MODULE_URL
   ? `${process.env.MESSAGING_MODULE_URL}/api/messaging/pm-webhook`
@@ -24,10 +24,15 @@ export async function dispatchEvent(payload: {
   triggeredBy?: string;
   data: Record<string, string | undefined>;
 }): Promise<void> {
+  // projectId alone used to be enough — every caller of dispatchEvent passes
+  // its OWN orgId, not one read off the project row, so an event dispatched
+  // for the wrong org (see the projects/[projectId] PATCH ordering fix) or a
+  // caller that simply got orgId and projectId out of sync would still
+  // deliver to whatever org actually owns that projectId.
   const settings = await db
     .select()
     .from(projectSettings)
-    .where(eq(projectSettings.projectId, payload.projectId));
+    .where(and(eq(projectSettings.projectId, payload.projectId), eq(projectSettings.orgId, payload.orgId)));
 
   for (const setting of settings) {
     if (!setting.messagingChannelId) continue;
