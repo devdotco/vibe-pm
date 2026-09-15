@@ -82,8 +82,17 @@ async function mirrorPrincipal(identity: ShellIdentity) {
     // Keep the display name fresh. Status is deliberately NOT reactivated here:
     // a row set inactive is a decision someone made inside this app, and the
     // shell vouching for the person again does not undo it.
-    if (existing.name !== identity.fullName && identity.fullName) {
-      await db.update(users).set({ name: identity.fullName }).where(eq(users.id, existing.id));
+    // The role is refreshed on EVERY hand-off, including to null: the shell is
+    // the only authority on it, and a demotion there must reach Projects the
+    // next time this person arrives.
+    const shellRole = identity.role ?? null;
+    const nameChanged = existing.name !== identity.fullName && !!identity.fullName;
+    if (nameChanged || existing.shellRole !== shellRole) {
+      const [updated] = await db.update(users)
+        .set({ ...(nameChanged ? { name: identity.fullName } : {}), shellRole, updatedAt: new Date() })
+        .where(eq(users.id, existing.id))
+        .returning();
+      return updated;
     }
     return existing;
   }
@@ -95,6 +104,7 @@ async function mirrorPrincipal(identity: ShellIdentity) {
       email: identity.email,
       name: identity.fullName || identity.email,
       status: "active",
+      shellRole: identity.role ?? null,
     })
     .returning();
 

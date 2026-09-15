@@ -17,6 +17,9 @@ psql "$DATABASE_URL" -f drizzle/0003_comment_reactions.sql 2>&1 | grep -v "^psql
 # second row — the same person in a new organization — violates the old global
 # constraint and the sign-in fails outright.
 psql "$DATABASE_URL" -f drizzle/0004_user_per_org.sql 2>&1 | grep -v "^psql\|already exists\|duplicate" || true
+# 0005: task_attachments.storage_key (R2) and users.shell_role (admin checks).
+# Every statement is IF NOT EXISTS — this runs on every boot.
+psql "$DATABASE_URL" -f drizzle/0005_storage_roles.sql 2>&1 | grep -v "^psql\|already exists\|duplicate" || true
 echo "[startup] Incremental migrations done."
 
 echo "[startup] Starting Next.js..."

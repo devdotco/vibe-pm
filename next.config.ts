@@ -10,6 +10,16 @@ const nextConfig: NextConfig = {
    */
   basePath: "/pm",
   output: "standalone",
+  experimental: {
+    /*
+     * src/proxy.ts runs on every request, and Next buffers a body for the proxy
+     * only up to this size — past it the route handler receives a TRUNCATED
+     * body, with a warning in the log and nothing in the response. The 10mb
+     * default quietly corrupted any larger attachment. 50mb matches the
+     * per-file limit enforced in lib/uploads.ts.
+     */
+    proxyClientMaxBodySize: "50mb",
+  },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "utfs.io" },

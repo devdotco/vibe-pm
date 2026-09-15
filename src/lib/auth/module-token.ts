@@ -22,6 +22,8 @@ export interface ShellIdentity {
   fullName: string;
   shellOrgId?: string;
   shellSessionId?: string;
+  /** Suite role ladder value (VIEWER | OPERATOR | WORKSPACE_ADMIN | SUPER_ADMIN). */
+  role?: string;
 }
 
 export function shellUrl(): string {
@@ -102,11 +104,12 @@ export async function verifyModuleToken(token: string): Promise<ShellIdentity> {
 }
 
 function toIdentity(payload: JWTPayload): ShellIdentity {
-  const { sub, email, name, org, sid } = payload as JWTPayload & {
+  const { sub, email, name, org, sid, role } = payload as JWTPayload & {
     email?: unknown;
     name?: unknown;
     org?: unknown;
     sid?: unknown;
+    role?: unknown;
   };
 
   if (typeof sub !== "string" || !sub) throw new Error("Module token has no subject");
@@ -118,6 +121,8 @@ function toIdentity(payload: JWTPayload): ShellIdentity {
     fullName: typeof name === "string" ? name : "",
     shellOrgId: typeof org === "string" ? org : undefined,
     shellSessionId: typeof sid === "string" ? sid : undefined,
+    // Already capped by the shell for THIS module (ModuleAccess.role).
+    role: typeof role === "string" ? role : undefined,
   };
 }
 

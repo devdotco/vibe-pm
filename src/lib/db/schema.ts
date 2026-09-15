@@ -222,6 +222,9 @@ export const taskAttachments = pgTable("task_attachments", {
   filename: text("filename").notNull(),
   fileType: text("file_type").notNull(),
   fileSize: integer("file_size"),
+  // Object-store key (R2). NULL for rows written before 0005, whose bytes lived
+  // in the container's /tmp and are gone unless the one-off copy ran first.
+  storageKey: text("storage_key"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -420,6 +423,11 @@ export const users = pgTable(
     name: text("name").notNull(),
     avatarUrl: text("avatar_url"),
     status: text("status").default("active").notNull(),
+    // The suite role the shell stamped on this person's LAST hand-off token
+    // (VIEWER | OPERATOR | WORKSPACE_ADMIN | SUPER_ADMIN), already capped for
+    // Projects. NULL for magic-link-only accounts, which therefore never
+    // administer anything. See src/lib/auth/roles.ts.
+    shellRole: text("shell_role"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },

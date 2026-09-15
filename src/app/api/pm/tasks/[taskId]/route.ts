@@ -7,6 +7,7 @@ import { fireProjectWebhooks } from '@/lib/webhooks';
 import { pusherServer, projectChannel, taskChannel } from '@/lib/pusher/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { sendTaskAssignedEmail } from '@/lib/email/notifications';
+import { validate, UpdateTaskSchema } from '@/lib/validate';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   const user = await requireUser();
@@ -20,10 +21,30 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tas
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   const user = await requireUser();
   const { taskId } = await params;
-  const body = await req.json();
+  const parsed = validate(UpdateTaskSchema, await req.json().catch(() => null));
+  if (!parsed.success) return parsed.response;
+  const body = parsed.data;
   const [existing] = await db.select().from(tasks)
     .where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt)));
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  // Every id the body names must belong to this organization; a section must
+  // also belong to this task's project, or the task vanishes from every board.
+  if (body.sectionId) {
+    const [s] = await db.select({ id: sections.id }).from(sections)
+      .where(and(eq(sections.id, body.sectionId), eq(sections.projectId, existing.projectId), eq(sections.orgId, user.orgId)));
+    if (!s) return NextResponse.json({ error: 'Section not found' }, { status: 400 });
+  }
+  if (body.assigneeId) {
+    const [u] = await db.select({ id: users.id }).from(users)
+      .where(and(eq(users.id, body.assigneeId), eq(users.orgId, user.orgId)));
+    if (!u) return NextResponse.json({ error: 'Assignee not found' }, { status: 400 });
+  }
+  if (body.parentTaskId) {
+    const [p] = await db.select({ id: tasks.id }).from(tasks)
+      .where(and(eq(tasks.id, body.parentTaskId), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt)));
+    if (!p || body.parentTaskId === taskId) return NextResponse.json({ error: 'Parent task not found' }, { status: 400 });
+  }
 
   // When status changes, auto-move to the matching section on the board
   const STATUS_TO_SECTION: Record<string, string> = {
@@ -32,11 +53,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
     blocked: 'Blocked',
     completed: 'Done',
   };
-  if (body.status && body.status !== existing.status && STATUS_TO_SECTION[body.status] && !body.sectionId) {
+  const newStatus = body.status;
+  if (newStatus && newStatus !== existing.status && STATUS_TO_SECTION[newStatus] && !body.sectionId) {
     const projectSections = await db.select().from(sections)
       .where(and(eq(sections.projectId, existing.projectId), eq(sections.orgId, user.orgId), eq(sections.isArchived, false)));
     const match = projectSections.find(s =>
-      s.name.toLowerCase() === STATUS_TO_SECTION[body.status]!.toLowerCase()
+      s.name.toLowerCase() === STATUS_TO_SECTION[newStatus]!.toLowerCase()
     );
     if (match) body.sectionId = match.id;
   }
@@ -67,12 +89,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ta
   pusherServer.trigger(taskChannel(taskId), 'task.updated', { task }).catch(() => {});
 
   // email notification: assignee changed
-  if (body.assigneeId !== undefined && body.assigneeId !== existing.assigneeId && body.assigneeId) {
+  const newAssigneeId = body.assigneeId;
+  if (newAssigneeId && newAssigneeId !== existing.assigneeId) {
     (async () => {
       const [proj] = await db.select({ name: projects.name }).from(projects)
         .where(eq(projects.id, existing.projectId)).limit(1);
       const [assignee] = await db.select({ email: users.email, name: users.name })
-        .from(users).where(eq(users.id, body.assigneeId)).limit(1);
+        .from(users).where(eq(users.id, newAssigneeId)).limit(1);
       if (proj && assignee && assignee.email !== user.email) {
         sendTaskAssignedEmail({
           taskId,

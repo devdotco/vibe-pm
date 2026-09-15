@@ -16,7 +16,6 @@ const PUBLIC = [
   // returns an empty list when there is none. It is fail-closed on its own.
   "/api/module-links",
   "/api/auth/callback",
-  "/api/auth/magic",
   "/api/auth/send-magic",
   "/api/auth/verify",
   "/sign-in",

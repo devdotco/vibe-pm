@@ -32,6 +32,35 @@ export const CreateTaskSchema = z.object({
   parentTaskId: z.string().uuid().optional(),
 });
 
+/**
+ * The only fields PATCH /api/pm/tasks/[taskId] may write.
+ *
+ * It used to spread the request body straight into the update, so a caller
+ * could set `orgId`, `projectId`, `createdBy` or `deletedAt` — including moving
+ * a task into another organization. Moving between projects has its own route
+ * (`move-project`) that checks membership; it is deliberately not here.
+ * Unknown keys are stripped, not rejected, so an old client sending extra
+ * fields keeps working.
+ */
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const UpdateTaskSchema = z.object({
+  title: z.string().min(1).max(500),
+  description: z.string().max(50_000).nullable(),
+  status: z.enum(['not_started', 'in_progress', 'completed', 'blocked']),
+  priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']),
+  sectionId: z.string().uuid().nullable(),
+  assigneeId: z.string().uuid().nullable(),
+  dueDate: isoDate.nullable(),
+  dueTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable(),
+  startDate: isoDate.nullable(),
+  labels: z.array(z.string().max(50)).max(50),
+  estimatedMinutes: z.number().int().min(0).max(100_000).nullable(),
+  actualMinutes: z.number().int().min(0).max(100_000).nullable(),
+  customFields: z.record(z.string().max(200), z.union([z.string().max(5_000), z.number(), z.boolean(), z.null()])),
+  parentTaskId: z.string().uuid().nullable(),
+  isMilestone: z.boolean(),
+}).partial();
+
 export const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(5_000).optional(),

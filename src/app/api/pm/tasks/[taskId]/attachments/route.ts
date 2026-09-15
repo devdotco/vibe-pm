@@ -18,9 +18,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
   const { taskId } = await params;
   const [task] = await db.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId)));
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const { url, filename, fileType, fileSize } = await req.json();
+  const body = await req.json().catch(() => null);
+  const { url, filename, fileType, fileSize } = body ?? {};
+  // A link attachment is rendered as <a href>. Only http(s) — a `javascript:`
+  // URL here would run in the app's origin for whoever clicked it.
+  let parsedUrl: URL | null = null;
+  try { parsedUrl = typeof url === 'string' ? new URL(url) : null; } catch { parsedUrl = null; }
+  if (!parsedUrl || !['https:', 'http:'].includes(parsedUrl.protocol) || typeof filename !== 'string' || !filename.trim()) {
+    return NextResponse.json({ error: 'A valid http(s) url and filename are required' }, { status: 400 });
+  }
+  const safeUrl = parsedUrl.toString();
   const [attachment] = await db.transaction(async (tx) => {
-    const [a] = await tx.insert(taskAttachments).values({ taskId, orgId: user.orgId, userId: user.id, url, filename, fileType, fileSize }).returning();
+    const [a] = await tx.insert(taskAttachments).values({ taskId, orgId: user.orgId, userId: user.id, url: safeUrl, filename: filename.slice(0, 300), fileType: typeof fileType === 'string' ? fileType.slice(0, 200) : 'link', fileSize: Number.isInteger(fileSize) ? fileSize : null }).returning();
     await logActivity({ taskId, projectId: task.projectId, orgId: user.orgId, userId: user.id, action: 'attachment_added', newValue: filename }, tx);
     return [a];
   });
