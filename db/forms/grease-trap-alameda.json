@@ -1,0 +1,125 @@
+{
+  "title": "Grease Trap Follow-Up Report | Alameda County",
+  "description": "Rebuilt from the Jobber checklist of the same name. Bilingual labels are kept verbatim, including the ****** separator the original uses between English and Spanish.",
+  "_note": "Options marked [CONFIRM WORDING] were cut off in the source screenshots (Jobber's API does not expose job-form templates, so they could not be read). The visible text is kept verbatim; the rest needs a look at the live form. Options marked [CONFIRM OPTION] did not appear at all — only the selected choice was visible — and are a reasonable guess to be checked before this form is used on a county report.",
+  "definition": {
+    "sections": [
+      {
+        "id": "s_photos",
+        "title": "Before & After Photos | Fotos de antes y después",
+        "questions": [
+          { "id": "q_before", "type": "images", "label": "Before | Antes", "required": true },
+          { "id": "q_after", "type": "images", "label": "After | Después", "required": true }
+        ]
+      },
+      {
+        "id": "s_fog",
+        "title": "FOG Report | Reporte de FOG ****** Jurisdictional Max = 25%",
+        "questions": [
+          {
+            "id": "q_fog_measured",
+            "type": "dropdown",
+            "label": "Grease/Solids Measured | Grasa y sólidos medidos",
+            "required": true,
+            "options": [
+              { "id": "o_fog_0", "label": "0% – Compliant" },
+              { "id": "o_fog_5", "label": "5% – Compliant [CONFIRM OPTION]" },
+              { "id": "o_fog_10", "label": "10% – Compliant [CONFIRM OPTION]" },
+              { "id": "o_fog_15", "label": "15% – Compliant [CONFIRM OPTION]" },
+              { "id": "o_fog_20", "label": "20% – Compliant [CONFIRM OPTION]" },
+              { "id": "o_fog_25", "label": "25% – At jurisdictional maximum [CONFIRM OPTION]" },
+              { "id": "o_fog_over", "label": "Over 25% – Non-compliant [CONFIRM OPTION]" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "s_condition",
+        "title": "Condition of Grease Trap | Estado de la trampa de grasa",
+        "questions": [
+          {
+            "id": "q_plumbing",
+            "type": "dropdown",
+            "label": "Plumbing | Plomería",
+            "required": true,
+            "options": [
+              { "id": "o_plumbing_good", "label": "Good: The plumbing connected to the grease trap appeared to be in good working order, with proper flow and no visible obstructions or [CONFIRM WORDING]" },
+              { "id": "o_plumbing_fair", "label": "Fair [CONFIRM OPTION]" },
+              { "id": "o_plumbing_poor", "label": "Poor [CONFIRM OPTION]" }
+            ]
+          },
+          {
+            "id": "q_accessibility",
+            "type": "dropdown",
+            "label": "Accessibility | Accesibilidad",
+            "required": true,
+            "options": [
+              { "id": "o_access_good", "label": "Good: The grease trap was serviceable without delay or obstruction in compliance with CA HSC § 114201. ****** Bueno: La trampa de gr [CONFIRM WORDING]" },
+              { "id": "o_access_fair", "label": "Fair [CONFIRM OPTION]" },
+              { "id": "o_access_poor", "label": "Poor [CONFIRM OPTION]" }
+            ]
+          },
+          {
+            "id": "q_structural",
+            "type": "dropdown",
+            "label": "Structural | Estructural",
+            "required": true,
+            "options": [
+              { "id": "o_structural_good", "label": "Good: The grease trap is in good condition. No visible signs of structural damage or deterioration were observed. The lid seals properly, [CONFIRM WORDING]" },
+              { "id": "o_structural_fair", "label": "Fair [CONFIRM OPTION]" },
+              { "id": "o_structural_poor", "label": "Poor [CONFIRM OPTION]" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "s_found",
+        "title": "What We Found | Lo que encontramos",
+        "questions": [
+          {
+            "id": "q_found_item",
+            "type": "dropdown",
+            "label": "Insert photo or video of additional items noticed while on property that need attention. ******Inserte una foto o un video de cualquier elemento [CONFIRM WORDING]",
+            "required": true,
+            "options": [
+              { "id": "o_found_floor_drains", "label": "Floor Drains Need Hydrojetting. ****** Los desagües del piso requieren hidrojeteo." },
+              { "id": "o_found_none", "label": "Nothing further to report [CONFIRM OPTION]" }
+            ]
+          },
+          { "id": "q_found_photo", "type": "images", "label": "Photo", "required": false }
+        ]
+      },
+      {
+        "id": "s_additional",
+        "title": "Additional services performed at this visit | Servicios adicionales realizados durante esta visita",
+        "questions": [
+          {
+            "id": "q_additional",
+            "type": "checkboxes",
+            "label": "Check All That Apply. | Marque todas las opciones que correspondan.",
+            "required": false,
+            "options": [
+              { "id": "o_add_interceptor_pumping", "label": "Interceptor Pumping ****** Bombeo de interceptor de grasa" },
+              { "id": "o_add_trap_hydro", "label": "Grease Trap Hydrojetting ****** Hidrojeteo de trampa de grasa" },
+              { "id": "o_add_interceptor_hydro", "label": "Interceptor Hydrojetting ****** Hidrojeteo de interceptor de grasa" },
+              { "id": "o_add_floor_drain_hydro", "label": "Floor Drain Hydrojetting ****** Hidrojeteo de desagües de piso" },
+              { "id": "o_add_kitchen_floor_steam", "label": "Kitchen Floor Steam Cleaning ****** Limpieza con vapor de pisos de cocina" },
+              { "id": "o_add_appliance_steam", "label": "Appliance Steam Cleaning ****** Limpieza con vapor de equipos de cocina" },
+              { "id": "o_add_garbage_steam", "label": "Garbage Enclosure Area Steam Cleaning ****** Limpieza con vapor del área de los contenedores de basura" },
+              { "id": "o_add_rubber_mat_steam", "label": "Rubber Mat Steam Cleaning ****** Limpieza con vapor de tapetes de hule" },
+              { "id": "o_add_storefront_steam", "label": "Storefront / Sidewalk Steam Cleaning ****** Limpieza con vapor de la fachada y la banqueta" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "s_notes",
+        "title": "Technician Notes | Notas del técnico",
+        "questions": [
+          { "id": "q_notes", "type": "long_text", "label": "Notes/ Additional Info | Notas / Información adicional", "required": false },
+          { "id": "q_notes_photos", "type": "images", "label": "Photos", "required": false }
+        ]
+      }
+    ]
+  }
+}
