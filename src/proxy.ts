@@ -23,15 +23,20 @@ const PUBLIC = [
   // Inter-service bridge, gated by requireServiceAuth's bearer secret, not a
   // session cookie — callers here have no PM session to send.
   "/api/pm/webhook",
-  // The messaging bot's HMAC-signed webhook. A DIFFERENT route from the one
-  // above (plural "webhooks", singular "webhook") that used to ride along as
-  // a side effect of `startsWith("/api/pm/webhook")` matching its prefix too.
-  // That was never a deliberate exemption — it happened to work, right up
-  // until verifyWebhookSignature's fail-open bug (see src/lib/webhooks.ts)
-  // turned "reachable without a session" into "reachable without a
-  // signature." It stays public because it has to (the sender has no PM
-  // session either), but now it is its own line, not a coincidence.
-  "/api/pm/webhooks/messaging",
+  /*
+   * Deliberately NOT listed: "/api/pm/webhooks/messaging" (plural). It used
+   * to be public anyway, as a side effect of `startsWith("/api/pm/webhook")`
+   * (singular) also matching its own longer path — an accident, not a
+   * decision anyone made. That accident is exactly what turned
+   * verifyWebhookSignature's fail-open bug into "anyone can call this with
+   * no signature and no session at all" (see src/lib/webhooks.ts). It is a
+   * genuinely different route from the one above — HMAC-signed, not
+   * bearer-token — so closing the prefix collision does not silently break
+   * the singular route; it just stops the plural one from riding along
+   * uninvited. If something external genuinely needs to reach it without a
+   * session, that is a decision to make on purpose, as its own line here,
+   * not a side effect of list ordering.
+   */
   "/api/pm/cron",
   "/api/health",
   "/api/pusher",
