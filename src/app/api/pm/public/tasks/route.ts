@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks, sections } from '@/lib/db/schema';
+import { tasks, sections, projects, users } from '@/lib/db/schema';
 import { requireServiceAuth } from '@/lib/auth/service';
 import { logActivity } from '@/lib/activity';
 import { dispatchEvent } from '@/lib/webhooks/dispatcher';
@@ -29,6 +29,28 @@ export async function POST(req: NextRequest) {
   const { orgId, projectId, title, description, assigneeId, dueDate, priority, sourceMessageId, sourceChannelId, createdByUserId } = body;
   if (!orgId || !projectId || !title || !createdByUserId) {
     return NextResponse.json({ error: 'orgId, projectId, title, createdByUserId required' }, { status: 400 });
+  }
+
+  /*
+   * This is service-to-service, so orgId and projectId both come from the
+   * caller with nothing else to check them against — but nothing ever
+   * verified they agreed with each other. A caller (or a bug upstream of it)
+   * could send an orgId and a projectId from two different organizations and
+   * this would insert the task with the mismatched orgId anyway, putting it
+   * in org A's task list while it lives under org B's project.
+   */
+  const [project] = await db.select({ id: projects.id }).from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.orgId, orgId))).limit(1);
+  if (!project) return NextResponse.json({ error: 'projectId does not belong to orgId' }, { status: 400 });
+  if (createdByUserId) {
+    const [u] = await db.select({ id: users.id }).from(users)
+      .where(and(eq(users.id, createdByUserId), eq(users.orgId, orgId))).limit(1);
+    if (!u) return NextResponse.json({ error: 'createdByUserId does not belong to orgId' }, { status: 400 });
+  }
+  if (assigneeId) {
+    const [u] = await db.select({ id: users.id }).from(users)
+      .where(and(eq(users.id, assigneeId), eq(users.orgId, orgId))).limit(1);
+    if (!u) return NextResponse.json({ error: 'assigneeId does not belong to orgId' }, { status: 400 });
   }
 
   // find first non-archived section
