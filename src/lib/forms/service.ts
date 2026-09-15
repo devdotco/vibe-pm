@@ -123,6 +123,48 @@ export async function autoAttachForms(task: { id: string; projectId: string; org
   }
 }
 
+/**
+ * Auto-attach for a whole batch of tasks (the CSV import).
+ *
+ * The per-task path costs two queries each, which a 1,000-row import turns
+ * into 2,000. This reads the templates once and writes one row per
+ * (task, template).
+ */
+export async function autoAttachFormsBulk(orgId: string, created: Array<{ id: string; projectId: string; createdBy: string }>): Promise<number> {
+  if (!created.length) return 0;
+  try {
+    const projectIds = [...new Set(created.map((t) => t.projectId))];
+    const templates = await db.select().from(formTemplates).where(and(
+      eq(formTemplates.orgId, orgId),
+      eq(formTemplates.status, "active"),
+      // Bound parameters, never interpolated text: these ids come from task rows
+      // today, but a raw-SQL habit here is how the next caller gets it wrong.
+      sql`${formTemplates.autoAttachProjectIds} && ARRAY[${sql.join(projectIds.map((id) => sql`${id}::uuid`), sql`, `)}]`,
+    ));
+    if (!templates.length) return 0;
+
+    const rows = created.flatMap((task) =>
+      templates
+        .filter((t) => t.autoAttachProjectIds.includes(task.projectId))
+        .map((template) => ({
+          orgId,
+          templateId: template.id,
+          templateVersion: template.version,
+          title: template.title,
+          taskId: task.id,
+          projectId: task.projectId,
+          createdBy: task.createdBy,
+        })),
+    );
+    if (!rows.length) return 0;
+    await db.insert(formSubmissions).values(rows);
+    return rows.length;
+  } catch (err) {
+    console.warn("[forms] bulk auto-attach failed:", (err as Error).message);
+    return 0;
+  }
+}
+
 /** Create the task a form starts, the way POST /api/pm/tasks does, plus the task_assignees row the UI actually reads. */
 export async function createTaskForForm(tx: Tx, input: {
   user: User; projectId: string; sectionId: string | null; assigneeId: string | null; title: string;

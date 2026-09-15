@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { tasks, sections, projects, users } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
+import { autoAttachFormsBulk } from '@/lib/forms/service';
 import { eq, and, isNull } from 'drizzle-orm';
 import Papa from 'papaparse';
 import { z } from 'zod';
@@ -136,7 +137,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
     // Insert in batches of 100
     for (let i = 0; i < toInsert.length; i += 100) {
       const batch = toInsert.slice(i, i + 100);
-      await db.insert(tasks).values(batch);
+      const created = await db.insert(tasks).values(batch)
+        .returning({ id: tasks.id, projectId: tasks.projectId, createdBy: tasks.createdBy });
+      // Imported rows are tasks like any other, so a form set to auto-attach
+      // in this project attaches to them too.
+      await autoAttachFormsBulk(user.orgId, created);
       imported += batch.length;
     }
   }

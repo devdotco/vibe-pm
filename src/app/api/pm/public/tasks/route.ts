@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { tasks, sections, projects, users } from '@/lib/db/schema';
 import { requireServiceAuth } from '@/lib/auth/service';
 import { logActivity } from '@/lib/activity';
+import { autoAttachForms } from '@/lib/forms/service';
 import { dispatchEvent } from '@/lib/webhooks/dispatcher';
 import { positionBetween } from '@/lib/ordering';
 import { eq, and, isNull, desc, asc } from 'drizzle-orm';
@@ -72,6 +73,10 @@ export async function POST(req: NextRequest) {
     await logActivity({ taskId: t.id, projectId, orgId, userId: createdByUserId, action: 'created' }, tx);
     return [t];
   });
+
+  // Same forms an in-app create would attach: a task made by the messaging
+  // module is still a job somebody has to fill a checklist in for.
+  await autoAttachForms(task);
 
   dispatchEvent({ eventType: 'task.created', orgId, projectId, taskId: task.id, triggeredBy: createdByUserId, data: { title } });
   return NextResponse.json({ success: true, task }, { status: 201 });

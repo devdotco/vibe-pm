@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { tasks, sections, projects, users } from '@/lib/db/schema';
 import { requireServiceAuth } from '@/lib/auth/service';
 import { logActivity } from '@/lib/activity';
+import { autoAttachForms } from '@/lib/forms/service';
 import { dispatchEvent } from '@/lib/webhooks/dispatcher';
 import { positionBetween } from '@/lib/ordering';
 import { eq, and, isNull, asc, desc } from 'drizzle-orm';
@@ -39,6 +40,7 @@ export async function POST(req: NextRequest) {
       await logActivity({ taskId: t.id, projectId, orgId, userId: createdByUserId ?? orgId, action: 'created' }, tx);
       return [t];
     });
+    await autoAttachForms(task);
     dispatchEvent({ eventType: 'task.created', orgId, projectId, taskId: task.id, data: { title } });
     return NextResponse.json({ task });
   }
