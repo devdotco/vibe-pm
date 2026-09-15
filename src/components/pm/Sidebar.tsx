@@ -15,7 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
   Plus,
-  X,
+  X, ClipboardList,
 } from "lucide-react";
 import type { User } from "@/lib/db/schema";
 import { ModuleSidebar, AppRail, buildRailItems, SHELL_URL } from "@erp-ui";
@@ -939,6 +939,7 @@ export function Sidebar({ user, orgs }: SidebarProps) {
               { label: "My Tasks", href: "/my-tasks", icon: CheckSquare },
               { label: "Projects", href: "/projects", icon: FolderKanban, exact: true },
               { label: "Portfolios", href: "/portfolios", icon: LayoutGrid },
+              { label: "Forms", href: "/forms", icon: ClipboardList },
               { label: "Members", href: "/admin/users", icon: Users },
             ],
           },

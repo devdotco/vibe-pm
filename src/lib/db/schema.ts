@@ -222,6 +222,9 @@ export const taskAttachments = pgTable("task_attachments", {
   filename: text("filename").notNull(),
   fileType: text("file_type").notNull(),
   fileSize: integer("file_size"),
+  // Object-store key (R2). NULL for rows written before 0005, whose bytes lived
+  // in the container's /tmp and are gone unless the one-off copy ran first.
+  storageKey: text("storage_key"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -420,6 +423,11 @@ export const users = pgTable(
     name: text("name").notNull(),
     avatarUrl: text("avatar_url"),
     status: text("status").default("active").notNull(),
+    // The suite role the shell stamped on this person's LAST hand-off token
+    // (VIEWER | OPERATOR | WORKSPACE_ADMIN | SUPER_ADMIN), already capped for
+    // Projects. NULL for magic-link-only accounts, which therefore never
+    // administer anything. See src/lib/auth/roles.ts.
+    shellRole: text("shell_role"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -479,6 +487,113 @@ export const taskRecurrence = pgTable(
   (t) => [index("task_recurrence_next_due_idx").on(t.nextDueDate)]
 );
 
+// ── Forms ─────────────────────────────────────────────────────────────────────
+//
+// Jobber-style job forms. A template is edited in place and every save writes
+// an immutable version; a submission pins the version it was started from, so
+// renaming a question or deleting an option never rewrites an answer someone
+// already gave. Answers are keyed by question id, never by label.
+
+export const formTemplates = pgTable(
+  "form_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: text("org_id").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    status: text("status").default("active").notNull(), // 'active' | 'archived'
+    version: integer("version").default(1).notNull(),
+    definition: jsonb("definition").default({ sections: [] }).notNull(),
+    defaultProjectId: uuid("default_project_id").references(() => projects.id, { onDelete: "set null" }),
+    defaultSectionId: uuid("default_section_id").references(() => sections.id, { onDelete: "set null" }),
+    defaultAssigneeId: uuid("default_assignee_id").references(() => users.id, { onDelete: "set null" }),
+    autoAttachProjectIds: uuid("auto_attach_project_ids").array().default([]).notNull(),
+    createdBy: uuid("created_by").notNull(),
+    updatedBy: uuid("updated_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (t) => [index("form_templates_org_status_idx").on(t.orgId, t.status)]
+);
+
+export const formTemplateVersions = pgTable(
+  "form_template_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    templateId: uuid("template_id")
+      .notNull()
+      .references(() => formTemplates.id, { onDelete: "cascade" }),
+    orgId: text("org_id").notNull(),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    definition: jsonb("definition").notNull(),
+    createdBy: uuid("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("form_template_versions_template_version_idx").on(t.templateId, t.version)]
+);
+
+export const formSubmissions = pgTable(
+  "form_submissions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: text("org_id").notNull(),
+    templateId: uuid("template_id")
+      .notNull()
+      .references(() => formTemplates.id),
+    templateVersion: integer("template_version").notNull(),
+    title: text("title").notNull(),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    // CRM references. The CRM is the source of truth; the names are a snapshot
+    // so a list renders without a round trip and survives a CRM outage.
+    crmCompanyId: text("crm_company_id"),
+    crmCompanyName: text("crm_company_name"),
+    crmPersonId: text("crm_person_id"),
+    crmPersonName: text("crm_person_name"),
+    crmPersonEmail: text("crm_person_email"),
+    status: text("status").default("draft").notNull(), // 'draft' | 'submitted'
+    answers: jsonb("answers").default({}).notNull(),
+    createdBy: uuid("created_by").notNull(),
+    submittedBy: uuid("submitted_by"),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    crmSyncedAt: timestamp("crm_synced_at", { withTimezone: true }),
+    crmSyncError: text("crm_sync_error"),
+    lastEmailedAt: timestamp("last_emailed_at", { withTimezone: true }),
+    lastEmailedTo: text("last_emailed_to"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("form_submissions_org_template_idx").on(t.orgId, t.templateId, t.submittedAt),
+    index("form_submissions_task_idx").on(t.taskId),
+    index("form_submissions_crm_company_idx").on(t.orgId, t.crmCompanyId),
+    index("form_submissions_crm_person_idx").on(t.orgId, t.crmPersonId),
+  ]
+);
+
+export const formFiles = pgTable(
+  "form_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: text("org_id").notNull(),
+    submissionId: uuid("submission_id")
+      .notNull()
+      .references(() => formSubmissions.id, { onDelete: "cascade" }),
+    questionId: text("question_id").notNull(),
+    kind: text("kind").notNull(), // 'image' | 'signature'
+    storageKey: text("storage_key").notNull().unique(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    uploadedBy: uuid("uploaded_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("form_files_submission_idx").on(t.submissionId)]
+);
+
 // ── Relations ─────────────────────────────────────────────────────────────────
 
 export const teamsRelations = relations(teams, ({ many }) => ({
@@ -533,6 +648,10 @@ export type ProjectChannelLink = typeof projectChannelLinks.$inferSelect;
 export type TaskWatcher = typeof taskWatchers.$inferSelect;
 export type TaskRecurrenceRow = typeof taskRecurrence.$inferSelect;
 export type UserPreferencesRow = typeof userPreferences.$inferSelect;
+export type FormTemplateRow = typeof formTemplates.$inferSelect;
+export type FormTemplateVersionRow = typeof formTemplateVersions.$inferSelect;
+export type FormSubmissionRow = typeof formSubmissions.$inferSelect;
+export type FormFileRow = typeof formFiles.$inferSelect;
 
 export interface SavedUserPreferences {
   hiddenSections: string[];

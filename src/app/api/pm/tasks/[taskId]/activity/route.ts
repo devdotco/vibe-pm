@@ -52,7 +52,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tas
     ? await db.select({ commentId: commentReactions.commentId, userId: commentReactions.userId, userName: users.name })
         .from(commentReactions)
         .leftJoin(users, eq(commentReactions.userId, users.id))
-        .where(inArray(commentReactions.commentId, commentIds))
+        .where(and(inArray(commentReactions.commentId, commentIds), eq(commentReactions.orgId, user.orgId)))
     : [];
 
   const reactionsByComment: Record<string, Array<{ userId: string; userName: string | null }>> = {};

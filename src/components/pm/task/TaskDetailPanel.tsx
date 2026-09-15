@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { formatDistanceToNow, parseISO, isValid } from "date-fns";
 import { apiFetch } from "@/lib/base-path";
+import { TaskFormsPanel } from "@/components/pm/forms/TaskFormsPanel";
 
 function safeRelativeTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
@@ -399,6 +400,8 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // Forms still unsubmitted on this task; completing with any open is worth a warning.
+  const [openFormCount, setOpenFormCount] = useState(0);
   const [comment, setComment] = useState("");
   const [postingComment, setPostingComment] = useState(false);
   const [commentError, setCommentError] = useState("");
@@ -496,8 +499,16 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
   useEffect(() => {
     const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
     if (!pusherKey) { console.warn('[Pusher] NEXT_PUBLIC_PUSHER_KEY is not set — real-time updates disabled'); return; }
-    const pusher = new Pusher(pusherKey, { cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER ?? "us2" });
-    const ch = pusher.subscribe(`task-${taskId}`);
+    // authEndpoint added along with the private- prefix below: this channel
+    // used to be a plain public one, so pusher-js never needed to call an
+    // authorizer at all — subscribing was the whole story. A private channel
+    // with no authEndpoint just fails to subscribe.
+    const pusher = new Pusher(pusherKey, {
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER ?? "us2",
+      authEndpoint: "/api/pusher/auth",
+    });
+    // Must match taskChannel() in src/lib/pusher/server.ts.
+    const ch = pusher.subscribe(`private-task-${taskId}`);
     const refreshFeed = () => {
       apiFetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
     };
@@ -510,7 +521,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     };
     ch.bind('task.comment', refreshFeed);
     ch.bind('task.updated', refreshAll);
-    return () => { pusher.unsubscribe(`task-${taskId}`); pusher.disconnect(); };
+    return () => { pusher.unsubscribe(`private-task-${taskId}`); pusher.disconnect(); };
   }, [taskId]);
 
   const save = useCallback((patch: Partial<Task>) => {
@@ -617,6 +628,16 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
 
   const complete = async () => {
     if (!task) return;
+    // Jobber's "incomplete job forms": completing a visit whose checklist is
+    // half-filled is almost always a mis-tap, and the missing answers are the
+    // compliance record. Warn, but never block — the office sometimes has to
+    // close a job the tech could not finish.
+    if (task.status !== "completed" && openFormCount > 0) {
+      const ok = window.confirm(
+        `${openFormCount} form${openFormCount === 1 ? " on this task has" : "s on this task have"} not been submitted. Complete the task anyway?`,
+      );
+      if (!ok) return;
+    }
     await apiFetch(`/api/pm/tasks/${taskId}/complete`, { method: "POST" });
     setTask(t => t ? { ...t, status: "completed", completedAt: new Date().toISOString() } : t);
   };
@@ -1092,6 +1113,9 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
               </div>
             )}
           </div>
+
+          {/* Forms */}
+          <TaskFormsPanel taskId={taskId} onOpenCount={setOpenFormCount} />
 
           {/* Dependencies */}
           <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>

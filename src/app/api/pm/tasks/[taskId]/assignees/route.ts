@@ -14,7 +14,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tas
     .select({ id: users.id, name: users.name, email: users.email })
     .from(taskAssignees)
     .innerJoin(users, eq(taskAssignees.userId, users.id))
-    .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.orgId, user.orgId)));
+    .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.orgId, user.orgId), eq(users.orgId, user.orgId)));
   return NextResponse.json({ assignees: rows });
 }
 
@@ -23,7 +23,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
   const { taskId } = await params;
   const [task] = await db.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId)));
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const { userId } = await req.json();
+  const { userId } = (await req.json().catch(() => ({}))) as { userId?: unknown };
+  // The assignee must be a member of THIS organization. Unchecked, any user id
+  // could be attached, and GET's join then returned that person's name and
+  // email — another tenant's directory, one guessed id at a time.
+  if (typeof userId !== 'string') return NextResponse.json({ error: 'userId required' }, { status: 400 });
+  const [member] = await db.select({ id: users.id }).from(users)
+    .where(and(eq(users.id, userId), eq(users.orgId, user.orgId))).limit(1);
+  if (!member) return NextResponse.json({ error: 'User not found' }, { status: 400 });
   const [assignee] = await db.transaction(async (tx) => {
     const [a] = await tx.insert(taskAssignees).values({ taskId, orgId: user.orgId, userId, assignedBy: user.id }).returning();
     await logActivity({ taskId, projectId: task.projectId, orgId: user.orgId, userId: user.id, action: 'assigned', newValue: userId }, tx);

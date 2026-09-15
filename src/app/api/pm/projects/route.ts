@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { projects, projectMembers, projectSettings, sections } from '@/lib/db/schema';
+import { projects, projectMembers, projectSettings, sections, teams } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { eq, and, or, ne } from 'drizzle-orm';
 import { validate, CreateProjectSchema } from '@/lib/validate';
@@ -16,10 +16,16 @@ const DEFAULT_SECTIONS = [
 
 export async function GET() {
   const user = await requireUser();
+  // The membership row's own orgId matching the caller isn't enough on its
+  // own: POST .../members used to let anyone insert a membership row (with
+  // their own orgId) pointing at ANY project id, including one in another
+  // org. Requiring the PROJECT to also be in the caller's org means that,
+  // even before that POST was fixed, a stray fake-membership row can't leak
+  // a foreign project into this list.
   const rows = await db
     .select({ project: projects })
     .from(projectMembers)
-    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .innerJoin(projects, and(eq(projectMembers.projectId, projects.id), eq(projects.orgId, user.orgId)))
     .where(and(eq(projectMembers.userId, user.id), eq(projectMembers.orgId, user.orgId), ne(projects.status, 'archived')));
   return NextResponse.json({ projects: rows.map(r => r.project) }, {
     headers: { 'Cache-Control': 'no-store' },
@@ -35,6 +41,15 @@ export async function POST(req: NextRequest) {
   const v = validate(CreateProjectSchema, body);
   if (!v.success) return v.response;
   const { name, description, color, icon, teamId, isPublic, dueDate } = v.data;
+
+  // teamId came straight from the body with no check that the team existed
+  // in this org — a project could be filed under another tenant's team id,
+  // and workspaces/[teamId] has no org-scoped read guarding against it.
+  if (teamId) {
+    const [team] = await db.select({ id: teams.id }).from(teams)
+      .where(and(eq(teams.id, teamId), eq(teams.orgId, user.orgId))).limit(1);
+    if (!team) return NextResponse.json({ error: 'Team not found' }, { status: 400 });
+  }
 
   const [project] = await db.insert(projects).values({
     orgId: user.orgId, name, description, color: color ?? '#2563eb', icon,

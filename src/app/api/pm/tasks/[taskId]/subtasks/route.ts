@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tasks } from '@/lib/db/schema';
+import { tasks, users } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity';
 import { eq, and, isNull, asc } from 'drizzle-orm';
@@ -21,6 +21,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
     .where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt)));
   if (!parent) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const { title, assigneeId, dueDate } = await req.json();
+  if (!title || typeof title !== 'string' || title.length > 500) {
+    return NextResponse.json({ error: 'title is required and must be 500 characters or fewer' }, { status: 400 });
+  }
+  if (assigneeId) {
+    const [u] = await db.select({ id: users.id }).from(users)
+      .where(and(eq(users.id, assigneeId), eq(users.orgId, user.orgId))).limit(1);
+    if (!u) return NextResponse.json({ error: 'Assignee not found' }, { status: 400 });
+  }
   const [subtask] = await db.transaction(async (tx) => {
     const [s] = await tx.insert(tasks).values({
       projectId: parent.projectId, sectionId: parent.sectionId, orgId: user.orgId,

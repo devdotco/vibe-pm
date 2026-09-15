@@ -21,6 +21,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
     return NextResponse.json({ error: 'Task is already in this project' }, { status: 400 });
   }
 
+  /*
+   * Membership alone doesn't prove the target project is in this org: the
+   * members POST route used to let a caller self-grant a membership row
+   * (their own orgId) pointing at ANY project id, including one in another
+   * org (now fixed there, but this checks the project directly too rather
+   * than trusting membership as a proxy for it).
+   */
   const [membership] = await db.select({ id: projectMembers.userId }).from(projectMembers)
     .where(and(
       eq(projectMembers.projectId, targetProjectId),
@@ -30,12 +37,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
   if (!membership) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
   const [targetProject] = await db.select({ name: projects.name }).from(projects)
-    .where(eq(projects.id, targetProjectId));
+    .where(and(eq(projects.id, targetProjectId), eq(projects.orgId, user.orgId)));
   if (!targetProject) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
   // Use provided sectionId or fall back to the first section of the target project
   let resolvedSectionId: string | null = targetSectionId ?? null;
-  if (!resolvedSectionId) {
+  if (resolvedSectionId) {
+    // The body named a sectionId with nothing checking it belonged to the
+    // TARGET project (or even this org) — a task could land in a section
+    // that lives on a completely different project's board.
+    const [s] = await db.select({ id: sections.id }).from(sections)
+      .where(and(eq(sections.id, resolvedSectionId), eq(sections.projectId, targetProjectId), eq(sections.orgId, user.orgId)))
+      .limit(1);
+    if (!s) return NextResponse.json({ error: 'Section not found' }, { status: 400 });
+  } else {
     const [firstSection] = await db.select({ id: sections.id }).from(sections)
       .where(and(
         eq(sections.projectId, targetProjectId),

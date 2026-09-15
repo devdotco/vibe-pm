@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { sections } from '@/lib/db/schema';
+import { sections, projects } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { eq, and, asc } from 'drizzle-orm';
 
@@ -16,6 +16,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ pro
 export async function POST(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   const user = await requireUser();
   const { projectId } = await params;
+  // projectId came straight from the URL with no check it belonged to this
+  // org — a section could be created against any project id while carrying
+  // the caller's own orgId.
+  const [project] = await db.select({ id: projects.id }).from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.orgId, user.orgId))).limit(1);
+  if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+
   const { name, color } = await req.json();
   if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 });
   // place at end

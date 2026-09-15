@@ -13,7 +13,7 @@ interface AdminUser {
   updatedAt: string;
 }
 
-export function UsersAdminClient({ initialUsers }: { initialUsers: AdminUser[] }) {
+export function UsersAdminClient({ initialUsers, canManage }: { initialUsers: AdminUser[]; canManage: boolean }) {
   const [users, setUsers] = useState<AdminUser[]>(initialUsers);
   const [showAdd, setShowAdd] = useState(false);
 
@@ -42,12 +42,12 @@ export function UsersAdminClient({ initialUsers }: { initialUsers: AdminUser[] }
           <h1 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)" }}>Admin — Users</h1>
           <div style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "2px" }}>{users.length} user{users.length !== 1 ? "s" : ""}</div>
         </div>
-        <button
+        {canManage && <button
           onClick={() => setShowAdd(true)}
           style={{ padding: "8px 16px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "14px", fontWeight: 500, cursor: "pointer" }}
         >
           + Add User
-        </button>
+        </button>}
       </div>
 
       {/* Admin nav */}
@@ -90,9 +90,11 @@ export function UsersAdminClient({ initialUsers }: { initialUsers: AdminUser[] }
                 <td style={{ padding: "12px 16px", fontSize: "12px", color: "var(--text-muted)" }}>{u.orgId}</td>
                 <td style={{ padding: "12px 16px" }}>
                   <button
-                    onClick={() => toggleStatus(u.id, u.status)}
+                    onClick={() => canManage && toggleStatus(u.id, u.status)}
+                    disabled={!canManage}
+                    title={canManage ? undefined : "Only organization admins can change members"}
                     style={{
-                      padding: "3px 10px", borderRadius: "20px", border: "none", cursor: "pointer",
+                      padding: "3px 10px", borderRadius: "20px", border: "none", cursor: canManage ? "pointer" : "default",
                       fontSize: "12px", fontWeight: 500,
                       background: u.status === "active" ? "#22c55e20" : "var(--border)",
                       color: u.status === "active" ? "#22c55e" : "var(--text-muted)",

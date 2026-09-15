@@ -4,11 +4,22 @@ import { sections } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
 import { eq, and } from 'drizzle-orm';
 
+// Mirrors the allow-list already used by
+// projects/[projectId]/sections/[sectionId]/route.ts — this sibling route
+// still spread the whole body into the update (orgId/projectId/id
+// included).
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sectionId: string }> }) {
   const user = await requireUser();
   const { sectionId } = await params;
   const body = await req.json();
-  const [section] = await db.update(sections).set({ ...body, updatedAt: new Date() })
+  const allowed = ['name', 'color', 'position'] as const;
+  const patch: Partial<{ name: string; color: string | null; position: number }> = {};
+  for (const key of allowed) {
+    if (key in body) (patch as Record<string, unknown>)[key] = body[key];
+  }
+  if (Object.keys(patch).length === 0)
+    return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+  const [section] = await db.update(sections).set({ ...patch, updatedAt: new Date() })
     .where(and(eq(sections.id, sectionId), eq(sections.orgId, user.orgId))).returning();
   if (!section) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ section });

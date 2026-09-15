@@ -22,7 +22,8 @@ const SHELL_URL = (process.env.NEXT_PUBLIC_SHELL_URL ?? "https://app.erp.io").re
 function SignInForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/my-tasks";
-  const [email, setEmail] = useState("");
+  // Prefilled from an invite link (/sign-in?email=…).
+  const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

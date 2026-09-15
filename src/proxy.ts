@@ -16,17 +16,47 @@ const PUBLIC = [
   // returns an empty list when there is none. It is fail-closed on its own.
   "/api/module-links",
   "/api/auth/callback",
-  "/api/auth/magic",
   "/api/auth/send-magic",
   "/api/auth/verify",
   "/sign-in",
   "/api/pm/public",
+  // Inter-service bridge, gated by requireServiceAuth's bearer secret, not a
+  // session cookie — callers here have no PM session to send.
   "/api/pm/webhook",
+  /*
+   * Deliberately NOT listed: "/api/pm/webhooks/messaging" (plural). It used
+   * to be public anyway, as a side effect of `startsWith("/api/pm/webhook")`
+   * (singular) also matching its own longer path — an accident, not a
+   * decision anyone made. That accident is exactly what turned
+   * verifyWebhookSignature's fail-open bug into "anyone can call this with
+   * no signature and no session at all" (see src/lib/webhooks.ts). It is a
+   * genuinely different route from the one above — HMAC-signed, not
+   * bearer-token — so closing the prefix collision does not silently break
+   * the singular route; it just stops the plural one from riding along
+   * uninvited. If something external genuinely needs to reach it without a
+   * session, that is a decision to make on purpose, as its own line here,
+   * not a side effect of list ordering.
+   */
   "/api/pm/cron",
   "/api/health",
   "/api/pusher",
   "/api/webhooks/email/inbound",
 ];
+
+/*
+ * Exact match, or the start of a path segment — never a bare substring.
+ *
+ * `startsWith` alone means every entry is also a prefix of anything spelled
+ * the same way with more path after it, INCLUDING more path that was never
+ * meant to be covered: "/api/pm/webhook" (singular, bearer-token gated) is a
+ * literal prefix of "/api/pm/webhooks/messaging" (plural, HMAC-gated), so the
+ * old check waved the second one through as a side effect of listing the
+ * first. Requiring the next character to be "/" (or nothing) closes that
+ * without having to enumerate every accidental collision by hand.
+ */
+export function isPublicPath(path: string): boolean {
+  return PUBLIC.some((p) => path === p || path.startsWith(`${p}/`));
+}
 
 export function proxy(req: NextRequest) {
   /*
@@ -42,8 +72,7 @@ export function proxy(req: NextRequest) {
    * arrives already stripped, so this is correct either way.
    */
   const path = stripBase(req.nextUrl.pathname);
-  const isPublic = PUBLIC.some((p) => path.startsWith(p));
-  if (isPublic) return NextResponse.next();
+  if (isPublicPath(path)) return NextResponse.next();
   const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'app.erp.io';
   const proto = req.headers.get('x-forwarded-proto') ?? 'https';
   /*

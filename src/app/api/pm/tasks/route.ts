@@ -12,6 +12,7 @@ import { sendTaskAssignedEmail } from '@/lib/email/notifications';
 import { validate, CreateTaskSchema } from '@/lib/validate';
 import { rateLimit } from '@/lib/rate-limit';
 import { autoWatch } from '@/lib/watchers';
+import { autoAttachForms } from '@/lib/forms/service';
 
 export async function GET(req: NextRequest) {
   const user = await requireUser();
@@ -33,6 +34,28 @@ export async function POST(req: NextRequest) {
   if (!v.success) return v.response;
   const { projectId, sectionId, title, description, priority, assigneeId, dueDate, dueTime, startDate, labels, parentTaskId, estimatedMinutes } = v.data;
 
+  // The project, and every id hanging off it, must be in the caller's
+  // organization. Without this a task could be created — carrying the caller's
+  // org_id — inside another tenant's project, where project-scoped views show it.
+  const [project] = await db.select({ id: projects.id }).from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.orgId, user.orgId))).limit(1);
+  if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  if (sectionId) {
+    const [s] = await db.select({ id: sections.id }).from(sections)
+      .where(and(eq(sections.id, sectionId), eq(sections.projectId, projectId), eq(sections.orgId, user.orgId))).limit(1);
+    if (!s) return NextResponse.json({ error: 'Section not found' }, { status: 400 });
+  }
+  if (assigneeId) {
+    const [u] = await db.select({ id: users.id }).from(users)
+      .where(and(eq(users.id, assigneeId), eq(users.orgId, user.orgId))).limit(1);
+    if (!u) return NextResponse.json({ error: 'Assignee not found' }, { status: 400 });
+  }
+  if (parentTaskId) {
+    const [pt] = await db.select({ id: tasks.id }).from(tasks)
+      .where(and(eq(tasks.id, parentTaskId), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt))).limit(1);
+    if (!pt) return NextResponse.json({ error: 'Parent task not found' }, { status: 400 });
+  }
+
   // get first position in section so new tasks land at the top
   const existing = await db.select({ position: tasks.position }).from(tasks)
     .where(and(eq(tasks.projectId, projectId), sectionId ? eq(tasks.sectionId, sectionId) : isNull(tasks.sectionId), isNull(tasks.deletedAt)))
@@ -53,6 +76,11 @@ export async function POST(req: NextRequest) {
     return [task];
   });
 
+  // Forms set to auto-attach in this project. Best-effort and awaited, so the
+  // response already carries them — the task drawer opens showing the
+  // checklist rather than gaining one a moment later.
+  await autoAttachForms(task);
+
   // async: fire webhook + pusher
   dispatchEvent({ eventType: 'task.created', orgId: user.orgId, projectId, taskId: task.id, triggeredBy: user.id, data: { title } });
   pusherServer.trigger(projectChannel(projectId, user.orgId), 'task.created', { task }).catch(() => {});
@@ -60,7 +88,7 @@ export async function POST(req: NextRequest) {
   // fire cross-app webhook
   const [proj] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, projectId)).limit(1);
   if (proj) {
-    fireProjectWebhooks(projectId, 'task.created', {
+    fireProjectWebhooks(user.orgId, projectId, 'task.created', {
       taskId: task.id,
       taskTitle: task.title,
       projectName: proj.name,
