@@ -9,6 +9,24 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ta
   const user = await requireUser();
   const { taskId, cid } = await params;
 
+  /*
+   * The task and the comment used to be fetched by id alone — taskId from
+   * the URL, cid from the URL — with no check that either belonged to this
+   * org, or even that the comment belonged to the task. A caller could react
+   * to (and trigger a notification insert about) a comment on a completely
+   * different tenant's task just by knowing its uuid; the notification's
+   * projectId and the pusher trigger would then point at that foreign task.
+   */
+  const [task] = await db.select({ projectId: tasks.projectId })
+    .from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId))).limit(1);
+  if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  const [comment] = await db.select({ userId: taskComments.userId })
+    .from(taskComments)
+    .where(and(eq(taskComments.id, cid), eq(taskComments.taskId, taskId), eq(taskComments.orgId, user.orgId)))
+    .limit(1);
+  if (!comment) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
   const [existing] = await db.select().from(commentReactions)
     .where(and(
       eq(commentReactions.commentId, cid),
@@ -24,14 +42,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ta
     }).onConflictDoNothing();
 
     // notify the comment author (if it's not themselves)
-    const [comment] = await db.select({ userId: taskComments.userId })
-      .from(taskComments).where(eq(taskComments.id, cid)).limit(1);
-    if (comment && comment.userId !== user.id) {
-      const [task] = await db.select({ projectId: tasks.projectId })
-        .from(tasks).where(eq(tasks.id, taskId)).limit(1);
+    if (comment.userId !== user.id) {
       await db.insert(pmNotifications).values({
         userId: comment.userId, orgId: user.orgId, type: 'comment.reaction',
-        taskId, projectId: task?.projectId ?? null, triggeredByUserId: user.id,
+        taskId, projectId: task.projectId, triggeredByUserId: user.id,
       }).onConflictDoNothing();
     }
   }
