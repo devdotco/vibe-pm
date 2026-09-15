@@ -58,7 +58,10 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
     });
     pusherRef.current = client;
 
-    const channelName = `org-${project.orgId}-project-${projectId}`;
+    // Must match projectChannel() in src/lib/pusher/server.ts — private-
+    // prefixed so Pusher actually calls authEndpoint instead of treating this
+    // as a public channel anyone with the app key could join.
+    const channelName = `private-org-${project.orgId}-project-${projectId}`;
     const ch = client.subscribe(channelName);
 
     ch.bind("task.created", (data: { task: Task }) => {

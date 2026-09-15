@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { taskComments, tasks, users } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { verifyReplyAddress, stripQuotedReply } from '@/lib/email/notifications';
-import { pusherServer } from '@/lib/pusher/server';
+import { pusherServer, taskChannel } from '@/lib/pusher/server';
 import { timingSafeEqual } from '@/lib/auth/service';
 
 export async function POST(req: NextRequest) {
@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
     console.log('[pm-inbound] inserted comment', comment?.id);
 
     // Broadcast on task-specific channel so open task panels refresh in real-time
-    pusherServer.trigger(`task-${taskId}`, 'task.comment', { commentId: comment?.id }).catch(() => {});
+    pusherServer.trigger(taskChannel(taskId), 'task.comment', { commentId: comment?.id }).catch(() => {});
 
     return NextResponse.json({ ok: true });
   }
