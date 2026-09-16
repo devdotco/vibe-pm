@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, use } from "react";
+import { useState, useEffect, useRef, useCallback, use } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ProjectListView } from "@/components/pm/project/ProjectListView";
 import { KanbanBoard, KanbanBoardSkeleton } from "@/components/pm/board/KanbanBoard";
@@ -39,11 +39,31 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
   };
   const pusherRef = useRef<PusherClient | null>(null);
 
+  // Sequenced so a slow response to an earlier load can never overwrite a
+  // newer one — edits in the task panel fire these in quick bursts.
+  const tasksLoadSeq = useRef(0);
+  const loadTasks = useCallback(() => {
+    const seq = ++tasksLoadSeq.current;
+    apiFetch(`/api/pm/projects/${projectId}/tasks`).then(r => r.json()).then(d => {
+      if (seq === tasksLoadSeq.current) setTasks(d.tasks ?? []);
+    }).catch(() => {});
+  }, [projectId]);
+
   useEffect(() => {
     apiFetch(`/api/pm/projects/${projectId}`).then(r => r.json()).then(d => setProject(d.project));
     apiFetch(`/api/pm/projects/${projectId}/sections`).then(r => r.json()).then(d => setSections(d.sections ?? []));
-    apiFetch(`/api/pm/projects/${projectId}/tasks`).then(r => r.json()).then(d => setTasks(d.tasks ?? []));
-  }, [projectId]);
+    loadTasks();
+  }, [projectId, loadTasks]);
+
+  // The task panel reports each write it makes; reload the list behind it so
+  // due dates, assignees and the rest show without a page refresh. Debounced
+  // because one edit can be several writes (assignee add, then the feed).
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleTaskChanged = useCallback(() => {
+    if (reloadTimer.current) clearTimeout(reloadTimer.current);
+    reloadTimer.current = setTimeout(loadTasks, 250);
+  }, [loadTasks]);
+  useEffect(() => () => { if (reloadTimer.current) clearTimeout(reloadTimer.current); }, []);
 
   // Pusher real-time subscriber
   useEffect(() => {
@@ -54,7 +74,7 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
 
     const client = new PusherClient(pusherKey, {
       cluster: pusherCluster,
-      authEndpoint: "/api/pusher/auth",
+      authEndpoint: withBase("/api/pusher/auth"),
     });
     pusherRef.current = client;
 
@@ -159,6 +179,7 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
         <TaskDetailPanel
           taskId={selectedTaskId}
           onClose={handleTaskClose}
+          onChanged={handleTaskChanged}
         />
       )}
     </div>

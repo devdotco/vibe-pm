@@ -7,7 +7,7 @@ import { PrioritySelect } from "@/components/pm/PriorityBadge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { formatDistanceToNow, parseISO, isValid } from "date-fns";
-import { apiFetch } from "@/lib/base-path";
+import { apiFetch as baseApiFetch, withBase } from "@/lib/base-path";
 import { TaskFormsPanel } from "@/components/pm/forms/TaskFormsPanel";
 
 function safeRelativeTime(dateStr: string | null | undefined): string {
@@ -393,7 +393,22 @@ function CommentAvatar({ name, email, size = 24 }: { name: string; email?: strin
   );
 }
 
-export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: () => void }) {
+export function TaskDetailPanel({ taskId, onClose, onChanged }: { taskId: string; onClose: () => void; onChanged?: () => void }) {
+  /*
+   * Every write in this panel goes through here, so the view behind it hears
+   * about each one without threading a callback into forty call sites. The
+   * list used to learn of edits only from Pusher, which never delivered them:
+   * the auth call 404'd off the /pm mount, and assignee writes never touched
+   * the project channel at all — so a changed due date or assignee showed
+   * only after a full reload.
+   */
+  const onChangedRef = useRef(onChanged);
+  onChangedRef.current = onChanged;
+  const apiFetch = useCallback(async (path: string, init?: RequestInit) => {
+    const res = await baseApiFetch(path, init);
+    if (init?.method && init.method !== "GET" && res.ok) onChangedRef.current?.();
+    return res;
+  }, []);
   const [task, setTask] = useState<Task | null>(null);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [subtasks, setSubtasks] = useState<SubTask[]>([]);
@@ -505,7 +520,7 @@ export function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: 
     // with no authEndpoint just fails to subscribe.
     const pusher = new Pusher(pusherKey, {
       cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER ?? "us2",
-      authEndpoint: "/api/pusher/auth",
+      authEndpoint: withBase("/api/pusher/auth"),
     });
     // Must match taskChannel() in src/lib/pusher/server.ts.
     const ch = pusher.subscribe(`private-task-${taskId}`);
