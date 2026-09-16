@@ -3,7 +3,7 @@ import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlignLeft, Calendar, CheckSquare, ChevronDown, GripVertical, Hash, Image as ImageIcon,
-  MoreHorizontal, PenLine, Plus, Monitor, Smartphone, Type,
+  MoreHorizontal, MoveRight, PenLine, Plus, Monitor, Smartphone, Type,
 } from "lucide-react";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
@@ -14,6 +14,7 @@ import {
   type FormDefinition, type FormQuestion, type FormSection, type QuestionType,
 } from "@/lib/forms/definition";
 import { QuestionField } from "@/components/pm/forms/QuestionField";
+import { AnchoredMenu, MenuItem, MenuLabel } from "@/components/pm/forms/AnchoredMenu";
 
 const TYPE_ICONS: Record<QuestionType, React.ComponentType<{ size?: number }>> = {
   short_text: Type,
@@ -58,7 +59,7 @@ export default function FormBuilderPage({ params }: { params: Promise<{ formId: 
   useEffect(() => {
     apiFetch(`/api/pm/forms/${formId}`).then((r) => r.json()).then((d) => {
       if (!d.form) { setError(d.error ?? "Form not found"); return; }
-      if (!d.canManage) { router.replace(withBase(`/forms/${formId}`)); return; }
+      if (!d.canManage) { router.replace(`/forms/${formId}`); return; }
       setForm({
         title: d.form.title,
         description: d.form.description,
@@ -109,7 +110,7 @@ export default function FormBuilderPage({ params }: { params: Promise<{ formId: 
     setBusy(false);
     if (!res.ok) { setError(d.error ?? "Could not save"); return; }
     setSaved(JSON.stringify(form.definition) + form.title);
-    router.push(withBase(`/forms/${formId}`));
+    router.push(`/forms/${formId}`);
   };
 
   const addSection = () => {
@@ -118,12 +119,15 @@ export default function FormBuilderPage({ params }: { params: Promise<{ formId: 
     setActiveSection(section.id);
   };
 
-  const addQuestion = (type: QuestionType) => {
+  const addQuestion = (type: QuestionType, sectionId?: string) => {
     setForm((f) => {
       if (!f) return f;
       let sections = f.definition.sections;
-      // Land in the section last touched; with no sections at all, make one.
-      let targetId = activeSection && sections.some((s) => s.id === activeSection) ? activeSection : sections[sections.length - 1]?.id;
+      // The section that was asked for; otherwise the one last touched; and
+      // with no sections at all, make one.
+      let targetId = sectionId && sections.some((s) => s.id === sectionId)
+        ? sectionId
+        : activeSection && sections.some((s) => s.id === activeSection) ? activeSection : sections[sections.length - 1]?.id;
       if (!targetId) {
         const s: FormSection = { id: newId("s"), title: "New section", questions: [] };
         sections = [...sections, s];
@@ -142,6 +146,22 @@ export default function FormBuilderPage({ params }: { params: Promise<{ formId: 
       };
     });
   };
+
+  const moveQuestion = useCallback((questionId: string, fromSectionId: string, toSectionId: string) => {
+    updateDefinition((d) => {
+      const from = d.sections.find((s) => s.id === fromSectionId);
+      const question = from?.questions.find((q) => q.id === questionId);
+      if (!question) return d;
+      // The id travels with it, so answers already given still line up.
+      return {
+        sections: d.sections.map((s) =>
+          s.id === fromSectionId ? { ...s, questions: s.questions.filter((q) => q.id !== questionId) }
+          : s.id === toSectionId ? { ...s, questions: [...s.questions, question] }
+          : s),
+      };
+    });
+    setActiveSection(toSectionId);
+  }, [updateDefinition]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -163,7 +183,7 @@ export default function FormBuilderPage({ params }: { params: Promise<{ formId: 
           <IconToggle active={narrow} onClick={() => setNarrow(true)} label="Phone width"><Smartphone size={16} /></IconToggle>
           <IconToggle active={!narrow} onClick={() => setNarrow(false)} label="Desktop width"><Monitor size={16} /></IconToggle>
         </div>
-        <button onClick={() => router.push(withBase(`/forms/${formId}`))} style={ghostBtn}>Cancel</button>
+        <button onClick={() => router.push(`/forms/${formId}`)} style={ghostBtn}>Cancel</button>
         <button onClick={save} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.7 : 1 }}>{busy ? "Saving…" : "Save"}</button>
       </div>
 
@@ -210,6 +230,8 @@ export default function FormBuilderPage({ params }: { params: Promise<{ formId: 
                     })}
                     onDelete={() => updateDefinition((d) => ({ sections: d.sections.filter((s) => s.id !== section.id) }))}
                     onAddQuestion={addQuestion}
+                    onMoveQuestion={moveQuestion}
+                    otherSections={form.definition.sections.filter((s) => s.id !== section.id).map((s) => ({ id: s.id, title: s.title }))}
                   />
                 ))}
               </SortableContext>
@@ -289,7 +311,12 @@ export default function FormBuilderPage({ params }: { params: Promise<{ formId: 
           <PanelButton onClick={addSection} icon={<Plus size={16} />}>Add section</PanelButton>
 
           <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", margin: "22px 0 4px" }}>Custom questions</div>
-          <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 8 }}>Select the type of question you&apos;d like to ask</p>
+          <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 8 }}>
+            {(() => {
+              const target = form.definition.sections.find((s) => s.id === activeSection) ?? form.definition.sections[form.definition.sections.length - 1];
+              return target ? <>Adds to <strong style={{ color: "var(--text-secondary)" }}>{target.title || "Untitled section"}</strong> — click a section first to change that.</> : "Adds a first section for you.";
+            })()}
+          </p>
           <div style={{ display: "grid", gap: 4 }}>
             {(Object.keys(QUESTION_TYPE_LABELS) as QuestionType[]).map((type) => {
               const Icon = TYPE_ICONS[type];
@@ -309,7 +336,7 @@ export default function FormBuilderPage({ params }: { params: Promise<{ formId: 
 }
 
 function SectionCard({
-  section, preview, active, onFocus, onChange, onDuplicate, onDelete, onAddQuestion, previewAnswers, setPreviewAnswers,
+  section, preview, active, onFocus, onChange, onDuplicate, onDelete, onAddQuestion, onMoveQuestion, otherSections, previewAnswers, setPreviewAnswers,
 }: {
   section: FormSection;
   preview: boolean;
@@ -318,12 +345,15 @@ function SectionCard({
   onChange: (next: FormSection) => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onAddQuestion: (type: QuestionType) => void;
+  onAddQuestion: (type: QuestionType, sectionId: string) => void;
+  onMoveQuestion: (questionId: string, fromSectionId: string, toSectionId: string) => void;
+  otherSections: Array<{ id: string; title: string }>;
   previewAnswers: Record<string, unknown>;
   setPreviewAnswers: (fn: (a: Record<string, unknown>) => Record<string, unknown>) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id, disabled: preview });
-  const [menu, setMenu] = useState(false);
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
+  const [addMenu, setAddMenu] = useState<HTMLElement | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   return (
@@ -358,15 +388,15 @@ function SectionCard({
           />
         )}
         {!preview && (
-          <div style={{ position: "relative" }}>
-            <button onClick={(e) => { e.stopPropagation(); setMenu((m) => !m); }} aria-label="Section options" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex" }}>
+          <div>
+            <button onClick={(e) => { e.stopPropagation(); setMenu(menu ? null : e.currentTarget); }} aria-label="Section options" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex" }}>
               <MoreHorizontal size={18} />
             </button>
             {menu && (
-              <div onMouseLeave={() => setMenu(false)} style={{ position: "absolute", right: 0, top: 24, zIndex: 20, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 12px 32px rgba(0,0,0,0.18)", minWidth: 150, padding: 4 }}>
-                <button onClick={() => { setMenu(false); onDuplicate(); }} style={menuItem}>Duplicate section</button>
-                <button onClick={() => { setMenu(false); onDelete(); }} style={{ ...menuItem, color: "#ef4444" }}>Delete section</button>
-              </div>
+              <AnchoredMenu anchor={menu} onClose={() => setMenu(null)}>
+                <MenuItem onClick={() => { setMenu(null); onDuplicate(); }}>Duplicate section</MenuItem>
+                <MenuItem danger onClick={() => { setMenu(null); onDelete(); }}>Delete section</MenuItem>
+              </AnchoredMenu>
             )}
           </div>
         )}
@@ -398,6 +428,8 @@ function SectionCard({
               <QuestionEditor
                 key={q.id}
                 question={q}
+                otherSections={otherSections}
+                onMoveToSection={(toSectionId) => onMoveQuestion(q.id, section.id, toSectionId)}
                 onChange={(next) => onChange({ ...section, questions: section.questions.map((x) => (x.id === q.id ? next : x)) })}
                 onDelete={() => onChange({ ...section, questions: section.questions.filter((x) => x.id !== q.id) })}
                 onDuplicate={() => {
@@ -414,25 +446,61 @@ function SectionCard({
       )}
 
       {!preview && (
-        <button
-          onClick={() => onAddQuestion("short_text")}
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "12px 0", background: "none", border: "none", color: "var(--accent)", fontSize: 13.5, fontWeight: 500, cursor: "pointer" }}
-        >
-          <Plus size={15} /> Add Question
-        </button>
+        <>
+          <button
+            onClick={(e) => { e.stopPropagation(); setAddMenu(addMenu ? null : e.currentTarget); }}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "12px 0", background: "none", border: "none", color: "var(--accent)", fontSize: 13.5, fontWeight: 500, cursor: "pointer" }}
+          >
+            <Plus size={15} /> Add Question
+          </button>
+          {/* A picker, not a default: this used to silently add a short answer,
+              with no way to change the type afterwards. */}
+          {addMenu && (
+            <AnchoredMenu anchor={addMenu} onClose={() => setAddMenu(null)} width={230}>
+              <MenuLabel>Add to “{section.title || "this section"}”</MenuLabel>
+              {(Object.keys(QUESTION_TYPE_LABELS) as QuestionType[]).map((type) => {
+                const Icon = TYPE_ICONS[type];
+                return (
+                  <MenuItem key={type} icon={<Icon size={15} />} onClick={() => { setAddMenu(null); onAddQuestion(type, section.id); }}>
+                    {QUESTION_TYPE_LABELS[type]}
+                  </MenuItem>
+                );
+              })}
+            </AnchoredMenu>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function QuestionEditor({ question, onChange, onDelete, onDuplicate }: {
+function QuestionEditor({ question, onChange, onDelete, onDuplicate, otherSections, onMoveToSection }: {
   question: FormQuestion;
   onChange: (q: FormQuestion) => void;
   onDelete: () => void;
   onDuplicate: () => void;
+  otherSections: Array<{ id: string; title: string }>;
+  onMoveToSection: (sectionId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: question.id });
-  const [menu, setMenu] = useState(false);
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
+  const [view, setView] = useState<"root" | "type" | "move">("root");
+
+  /**
+   * Change a question's type in place. Options are KEPT rather than dropped:
+   * switching a dropdown to a checkbox and back must not lose the wording, and
+   * a type that takes options but has none would fail validation on save.
+   */
+  const changeType = (type: QuestionType) => {
+    const needsOptions = TYPES_WITH_OPTIONS.has(type);
+    onChange({
+      ...question,
+      type,
+      options: needsOptions
+        ? (question.options?.length ? question.options : [{ id: newId("o"), label: "" }])
+        : question.options,
+    });
+  };
   const Icon = TYPE_ICONS[question.type];
   const hasOptions = TYPES_WITH_OPTIONS.has(question.type);
   const labelRef = useRef<HTMLTextAreaElement>(null);
@@ -449,7 +517,14 @@ function QuestionEditor({ question, onChange, onDelete, onDuplicate }: {
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.6 : 1, borderTop: "1px solid var(--border)", padding: "14px 0" }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-        <span style={{ color: "var(--text-muted)", display: "flex", paddingTop: 7 }}><Icon size={15} /></span>
+        <button
+          onClick={(e) => { e.stopPropagation(); setView("type"); setMenu(e.currentTarget); }}
+          title={`${QUESTION_TYPE_LABELS[question.type]} — click to change`}
+          style={{ display: "flex", alignItems: "center", gap: 2, background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: "7px 2px 0 0" }}
+        >
+          <Icon size={15} />
+          <ChevronDown size={11} />
+        </button>
         <textarea
           ref={labelRef}
           value={question.label}
@@ -461,15 +536,52 @@ function QuestionEditor({ question, onChange, onDelete, onDuplicate }: {
         <button {...attributes} {...listeners} aria-label="Reorder question" style={{ background: "none", border: "none", cursor: "grab", color: "var(--text-muted)", display: "flex", padding: "8px 2px" }}>
           <GripVertical size={15} />
         </button>
-        <div style={{ position: "relative" }}>
-          <button onClick={() => setMenu((m) => !m)} aria-label="Question options" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex", padding: "8px 2px" }}>
+        <div>
+          <button
+            onClick={(e) => { e.stopPropagation(); setView("root"); setMenu(menu ? null : e.currentTarget); }}
+            aria-label="Question options"
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex", padding: "8px 2px" }}
+          >
             <MoreHorizontal size={16} />
           </button>
           {menu && (
-            <div onMouseLeave={() => setMenu(false)} style={{ position: "absolute", right: 0, top: 28, zIndex: 20, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 12px 32px rgba(0,0,0,0.18)", minWidth: 150, padding: 4 }}>
-              <button onClick={() => { setMenu(false); onDuplicate(); }} style={menuItem}>Duplicate</button>
-              <button onClick={() => { setMenu(false); onDelete(); }} style={{ ...menuItem, color: "#ef4444" }}>Delete</button>
-            </div>
+            <AnchoredMenu anchor={menu} onClose={() => setMenu(null)} width={230}>
+              {view === "root" && (
+                <>
+                  <MenuItem icon={<Icon size={15} />} onClick={() => setView("type")}>
+                    Change type…
+                  </MenuItem>
+                  {otherSections.length > 0 && (
+                    <MenuItem icon={<MoveRight size={15} />} onClick={() => setView("move")}>Move to section…</MenuItem>
+                  )}
+                  <MenuItem onClick={() => { setMenu(null); onDuplicate(); }}>Duplicate</MenuItem>
+                  <MenuItem danger onClick={() => { setMenu(null); onDelete(); }}>Delete</MenuItem>
+                </>
+              )}
+              {view === "type" && (
+                <>
+                  <MenuLabel>Question type</MenuLabel>
+                  {(Object.keys(QUESTION_TYPE_LABELS) as QuestionType[]).map((t) => {
+                    const TIcon = TYPE_ICONS[t];
+                    return (
+                      <MenuItem key={t} icon={<TIcon size={15} />} checked={t === question.type} onClick={() => { changeType(t); setMenu(null); }}>
+                        {QUESTION_TYPE_LABELS[t]}
+                      </MenuItem>
+                    );
+                  })}
+                </>
+              )}
+              {view === "move" && (
+                <>
+                  <MenuLabel>Move to section</MenuLabel>
+                  {otherSections.map((sec) => (
+                    <MenuItem key={sec.id} onClick={() => { setMenu(null); onMoveToSection(sec.id); }}>
+                      {sec.title || "Untitled section"}
+                    </MenuItem>
+                  ))}
+                </>
+              )}
+            </AnchoredMenu>
           )}
         </div>
       </div>

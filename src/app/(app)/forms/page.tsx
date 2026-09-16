@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { ClipboardList, MoreHorizontal, Plus, Search } from "lucide-react";
 import { apiFetch, withBase } from "@/lib/base-path";
 import { StartFormDialog } from "@/components/pm/forms/StartFormDialog";
+import { AnchoredMenu, MenuItem } from "@/components/pm/forms/AnchoredMenu";
 
 export interface FormListItem {
   id: string;
@@ -30,7 +31,7 @@ export default function FormsPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ id: string; anchor: HTMLElement } | null>(null);
   const [starting, setStarting] = useState<FormListItem | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -46,12 +47,6 @@ export default function FormsPage() {
   }, [showArchived]);
 
   useEffect(load, [load]);
-  useEffect(() => {
-    const close = () => setMenuFor(null);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
-  }, []);
-
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return q ? forms.filter((f) => f.title.toLowerCase().includes(q)) : forms;
@@ -66,13 +61,13 @@ export default function FormsPage() {
     });
     const d = await res.json();
     setBusy(false);
-    if (d.form) router.push(withBase(`/forms/${d.form.id}/edit`));
+    if (d.form) router.push(`/forms/${d.form.id}/edit`);
   };
 
   const duplicate = async (id: string) => {
     const res = await apiFetch(`/api/pm/forms/${id}/duplicate`, { method: "POST" });
     const d = await res.json();
-    if (d.form) router.push(withBase(`/forms/${d.form.id}/edit`));
+    if (d.form) router.push(`/forms/${d.form.id}/edit`);
   };
 
   const setStatus = async (id: string, status: "active" | "archived") => {
@@ -183,24 +178,21 @@ export default function FormsPage() {
               {canManage && (
                 <>
                   <button
-                    onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === f.id ? null : f.id); }}
+                    onClick={(e) => { e.stopPropagation(); setMenu(menu?.id === f.id ? null : { id: f.id, anchor: e.currentTarget }); }}
                     aria-label="More"
                     style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}
                   >
                     <MoreHorizontal size={18} />
                   </button>
-                  {menuFor === f.id && (
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ position: "absolute", right: 0, top: 30, zIndex: 20, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 12px 32px rgba(0,0,0,0.18)", minWidth: 170, padding: 4 }}
-                    >
-                      <MenuItem label="Edit" onClick={() => router.push(withBase(`/forms/${f.id}/edit`))} />
-                      <MenuItem label="Duplicate" onClick={() => duplicate(f.id)} />
-                      <MenuItem label="Export CSV" onClick={() => { window.location.href = withBase(`/api/pm/forms/${f.id}/export`); }} />
+                  {menu?.id === f.id && (
+                    <AnchoredMenu anchor={menu.anchor} onClose={() => setMenu(null)}>
+                      <MenuItem onClick={() => { setMenu(null); router.push(`/forms/${f.id}/edit`); }}>Edit</MenuItem>
+                      <MenuItem onClick={() => { setMenu(null); duplicate(f.id); }}>Duplicate</MenuItem>
+                      <MenuItem onClick={() => { setMenu(null); window.location.href = withBase(`/api/pm/forms/${f.id}/export`); }}>Export CSV</MenuItem>
                       {f.status === "active"
-                        ? <MenuItem label="Archive" onClick={() => setStatus(f.id, "archived")} danger />
-                        : <MenuItem label="Restore" onClick={() => setStatus(f.id, "active")} />}
-                    </div>
+                        ? <MenuItem danger onClick={() => { setMenu(null); setStatus(f.id, "archived"); }}>Archive</MenuItem>
+                        : <MenuItem onClick={() => { setMenu(null); setStatus(f.id, "active"); }}>Restore</MenuItem>}
+                    </AnchoredMenu>
                   )}
                 </>
               )}
@@ -213,22 +205,11 @@ export default function FormsPage() {
         <StartFormDialog
           form={{ id: starting.id, title: starting.title, defaultProject: starting.defaultProject }}
           onClose={() => setStarting(null)}
-          onStarted={(submissionId) => router.push(withBase(`/forms/submissions/${submissionId}`))}
+          onStarted={(submissionId) => router.push(`/forms/submissions/${submissionId}`)}
         />
       )}
 
       <style>{`@media (max-width: 720px) { .pm-forms-hide-sm { display: none; } }`}</style>
     </div>
-  );
-}
-
-function MenuItem({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 10px", background: "none", border: "none", borderRadius: 6, fontSize: 13.5, color: danger ? "var(--negative, #ef4444)" : "var(--text-primary)", cursor: "pointer" }}
-    >
-      {label}
-    </button>
   );
 }

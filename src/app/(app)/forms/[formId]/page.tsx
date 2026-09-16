@@ -85,7 +85,7 @@ export default function FormDetailPage({ params }: { params: Promise<{ formId: s
         {rows.map((r, i) => (
           <button
             key={r.id}
-            onClick={() => router.push(withBase(`/forms/submissions/${r.id}`))}
+            onClick={() => router.push(`/forms/submissions/${r.id}`)}
             style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", textAlign: "left", padding: "13px 16px", background: "none", border: "none", borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none", cursor: "pointer" }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -114,7 +114,7 @@ export default function FormDetailPage({ params }: { params: Promise<{ formId: s
         <StartFormDialog
           form={{ id: form.id, title: form.title }}
           onClose={() => setStarting(false)}
-          onStarted={(submissionId) => router.push(withBase(`/forms/submissions/${submissionId}`))}
+          onStarted={(submissionId) => router.push(`/forms/submissions/${submissionId}`)}
         />
       )}
     </div>

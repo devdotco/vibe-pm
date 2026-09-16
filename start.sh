@@ -20,6 +20,8 @@ psql "$DATABASE_URL" -f drizzle/0004_user_per_org.sql 2>&1 | grep -v "^psql\|alr
 # 0005: task_attachments.storage_key (R2) and users.shell_role (admin checks).
 # Every statement is IF NOT EXISTS — this runs on every boot.
 psql "$DATABASE_URL" -f drizzle/0005_storage_roles.sql 2>&1 | grep -v "^psql\|already exists\|duplicate" || true
+# 0006: the forms tables. Every statement is IF NOT EXISTS.
+psql "$DATABASE_URL" -f drizzle/0006_forms.sql 2>&1 | grep -v "^psql\|already exists\|duplicate" || true
 echo "[startup] Incremental migrations done."
 
 echo "[startup] Starting Next.js..."
