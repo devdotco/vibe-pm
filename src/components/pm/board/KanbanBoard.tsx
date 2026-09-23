@@ -9,6 +9,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { PriorityDot } from "@/components/pm/PriorityBadge";
 import { apiFetch } from "@/lib/base-path";
+import { NO_SECTION_KEY, NO_SECTION_LABEL, hasNoVisibleSection } from "@/lib/pm/sections";
 
 interface Section { id: string; name: string; position: number; }
 interface Task { id: string; title: string; status: string; priority: string; dueDate: string | null; assigneeId: string | null; sectionId: string | null; position: number; labels: string[]; completedAt: string | null; }
@@ -167,12 +168,12 @@ function BoardBulkBar({ selectedIds, orgUsers, sections, onAction, onClear }: {
   );
 }
 
-function Column({ section, tasks, onTaskClick, onAddTask, selectedIds, onToggleSelect }: { section: Section; tasks: Task[]; onTaskClick: (id: string) => void; onAddTask: (sId: string, title: string) => void; selectedIds: Set<string>; onToggleSelect: (id: string) => void; }) {
+function Column({ sectionId, name, tasks, onTaskClick, onAddTask, selectedIds, onToggleSelect }: { sectionId: string | null; name: string; tasks: Task[]; onTaskClick: (id: string) => void; onAddTask: (sId: string | null, title: string) => void; selectedIds: Set<string>; onToggleSelect: (id: string) => void; }) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
 
   const handleAdd = () => {
-    if (title.trim()) { onAddTask(section.id, title.trim()); setTitle(""); }
+    if (title.trim()) { onAddTask(sectionId, title.trim()); setTitle(""); }
     setAdding(false);
   };
 
@@ -180,7 +181,7 @@ function Column({ section, tasks, onTaskClick, onAddTask, selectedIds, onToggleS
     <div style={{ width: "280px", flexShrink: 0, display: "flex", flexDirection: "column", maxHeight: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px 10px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>{section.name}</span>
+          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>{name}</span>
           <span style={{ fontSize: "11px", color: "var(--text-muted)", background: "var(--panel-hover)", padding: "1px 6px", borderRadius: "10px" }}>{tasks.length}</span>
         </div>
         <button onClick={() => setAdding(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "18px", padding: "0 2px" }}>+</button>
@@ -246,7 +247,13 @@ export function KanbanBoard({ projectId, sections, tasks, setSections, setTasks,
     setSelectedTaskIds(new Set());
   }, [selectedTaskIds, tasks, setTasks]);
 
-  const sectionTasks = (sId: string) => tasks.filter(t => t.sectionId === sId && !t.completedAt).sort((a, b) => a.position - b.position);
+  const visibleSectionIds = new Set(sections.map(s => s.id));
+  const byPosition = (a: Task, b: Task) => a.position - b.position;
+
+  const sectionTasks = (sId: string) => tasks.filter(t => t.sectionId === sId && !t.completedAt).sort(byPosition);
+  // Tasks the columns above cannot show; see lib/pm/sections.
+  const unsectionedTasks = tasks.filter(t => hasNoVisibleSection(t.sectionId, visibleSectionIds) && !t.completedAt).sort(byPosition);
+  const tasksForTarget = (sId: string | null) => sId === null ? unsectionedTasks : sectionTasks(sId);
 
   const handleDragStart = ({ active }: DragStartEvent) => {
     setActiveTask(tasks.find(t => t.id === active.id) ?? null);
@@ -258,15 +265,18 @@ export function KanbanBoard({ projectId, sections, tasks, setSections, setTasks,
     const draggedTask = tasks.find(t => t.id === active.id);
     if (!draggedTask) return;
 
-    // Determine target section
-    let targetSectionId = draggedTask.sectionId;
+    // Determine target section. Dropping onto a task whose own section is gone
+    // means the unsectioned column, never that dead section -- moving a task
+    // into an archived section would hide it all over again.
+    const resolve = (t: Task) => hasNoVisibleSection(t.sectionId, visibleSectionIds) ? null : t.sectionId;
+    let targetSectionId: string | null = resolve(draggedTask);
     const overTask = tasks.find(t => t.id === over.id);
     const overSection = sections.find(s => s.id === over.id);
     if (overSection) targetSectionId = overSection.id;
-    else if (overTask) targetSectionId = overTask.sectionId;
+    else if (overTask) targetSectionId = resolve(overTask);
 
     // Calculate new position
-    const targetTasks = sectionTasks(targetSectionId ?? "");
+    const targetTasks = tasksForTarget(targetSectionId);
     const overIndex = overTask ? targetTasks.findIndex(t => t.id === over.id) : targetTasks.length;
     const before = overIndex > 0 ? targetTasks[overIndex - 1]?.position ?? null : null;
     const after = targetTasks[overIndex]?.position ?? null;
@@ -282,7 +292,7 @@ export function KanbanBoard({ projectId, sections, tasks, setSections, setTasks,
     });
   };
 
-  const addTask = async (sectionId: string, title: string) => {
+  const addTask = async (sectionId: string | null, title: string) => {
     const res = await apiFetch("/api/pm/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId, sectionId, title }),
@@ -296,9 +306,13 @@ export function KanbanBoard({ projectId, sections, tasks, setSections, setTasks,
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div style={{ display: "flex", gap: "16px", padding: "20px 24px", overflowX: "auto", height: "100%", alignItems: "flex-start" }}>
           {sections.map(section => (
-            <Column key={section.id} section={section} tasks={sectionTasks(section.id)} onTaskClick={onTaskClick} onAddTask={addTask}
+            <Column key={section.id} sectionId={section.id} name={section.name} tasks={sectionTasks(section.id)} onTaskClick={onTaskClick} onAddTask={addTask}
               selectedIds={selectedTaskIds} onToggleSelect={toggleSelect} />
           ))}
+          {unsectionedTasks.length > 0 && (
+            <Column key={NO_SECTION_KEY} sectionId={null} name={NO_SECTION_LABEL} tasks={unsectionedTasks} onTaskClick={onTaskClick} onAddTask={addTask}
+              selectedIds={selectedTaskIds} onToggleSelect={toggleSelect} />
+          )}
         </div>
         <DragOverlay>
           {activeTask && (

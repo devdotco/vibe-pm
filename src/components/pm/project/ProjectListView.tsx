@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/base-path";
+import { NO_SECTION_KEY, NO_SECTION_LABEL, hasNoVisibleSection } from "@/lib/pm/sections";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -228,10 +229,6 @@ const DUEDATE_OPTIONS = [
 ];
 
 const ALL_SECTION_NAMES = ["Backlog", "To Do", "In Progress", "In Review", "Done"];
-
-/** The bucket for tasks with no section, or whose section has been archived. */
-const NO_SECTION_KEY = "__no_section__";
-const NO_SECTION_LABEL = "(No section)";
 
 function FilterPanel({ filters, sections, taskAssignees, onFilters, onClose }: {
   filters: Filters; sections: Section[]; taskAssignees: Assignee[];
@@ -939,21 +936,13 @@ function applySort(tasks: Task[], sortField: SortField, sortDir: "asc" | "desc")
 function buildGroups(tasks: Task[], groupBy: GroupBy, sections: Section[]): TaskGroup[] {
   if (groupBy === "section") {
     const result: TaskGroup[] = [];
-    const known = new Set(sections.map(s => s.id));
+    const visible = new Set(sections.map(s => s.id));
     for (const s of sections) {
       const st = tasks.filter(t => t.sectionId === s.id);
       result.push({ key: s.id, label: s.name, tasks: st, sectionId: s.id });
     }
-    /*
-     * A task can legitimately have no section: `tasks.section_id` is nullable
-     * and every task born from an import, the service API or the chat webhook
-     * arrives without one. A section can also be archived out from under its
-     * tasks, since the sections endpoint only returns `isArchived: false`.
-     * Either way the task matched no bucket above and rendered in NO group at
-     * all — it was loaded, counted by the API, and then silently dropped on
-     * the floor by this function. Give them a bucket instead of losing them.
-     */
-    const orphans = tasks.filter(t => !t.sectionId || !known.has(t.sectionId));
+    // Tasks whose section is missing matched no bucket above; see lib/pm/sections.
+    const orphans = tasks.filter(t => hasNoVisibleSection(t.sectionId, visible));
     if (orphans.length > 0) {
       result.push({ key: NO_SECTION_KEY, label: NO_SECTION_LABEL, tasks: orphans });
     }
