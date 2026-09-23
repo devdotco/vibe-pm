@@ -1,6 +1,20 @@
 import type { NextConfig } from "next";
 
+/*
+ * Stamps every asset request with the build's commit, so a request from a tab
+ * running an older build is recognisable as skew rather than as a plain 404.
+ *
+ * Coolify supplies SOURCE_COMMIT; the Dockerfile has to declare it as a build
+ * ARG for it to reach this file, because this is read at BUILD time and baked
+ * into the client bundle — a runtime-only value would be too late to matter.
+ *
+ * Left undefined rather than empty when there is no commit (a local `next
+ * build`): an empty deploymentId still appends `?dpl=` to every asset URL.
+ */
+const deploymentId = process.env.SOURCE_COMMIT?.trim() || undefined;
+
 const nextConfig: NextConfig = {
+  ...(deploymentId ? { deploymentId } : {}),
   /*
    * Served from app.erp.io/pm rather than its own subdomain, so the suite
    * shares ONE origin — one session cookie and no cross-site hand-off.

@@ -3,6 +3,13 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --include=dev
 COPY . .
+
+# next.config.ts reads this to set `deploymentId`, which is baked into the
+# client bundle at build time. Coolify passes SOURCE_COMMIT as a build arg;
+# an empty value is handled there and simply disables the stamping.
+ARG SOURCE_COMMIT
+ENV SOURCE_COMMIT=$SOURCE_COMMIT
+
 RUN npm run build
 
 FROM node:20-alpine AS runner

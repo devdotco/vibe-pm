@@ -49,11 +49,59 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
     }).catch(() => {});
   }, [projectId]);
 
+  /*
+   * `project` gates the whole page below, so a failure here used to strand it
+   * on the loading skeleton for good: neither of these two calls had a .catch
+   * (only loadTasks did), so one refused request left the board pulsing grey
+   * with nothing clickable and no way back except a manual reload. The failure
+   * is now recorded and offered as a retry.
+   */
+  const [loadFailed, setLoadFailed] = useState(false);
+  const loadProject = useCallback(() => {
+    setLoadFailed(false);
+    apiFetch(`/api/pm/projects/${projectId}`)
+      .then(r => r.json())
+      .then(d => { d.project ? setProject(d.project) : setLoadFailed(true); })
+      .catch(() => setLoadFailed(true));
+    apiFetch(`/api/pm/projects/${projectId}/sections`)
+      .then(r => r.json())
+      .then(d => setSections(d.sections ?? []))
+      .catch(() => {});
+  }, [projectId]);
+
   useEffect(() => {
-    apiFetch(`/api/pm/projects/${projectId}`).then(r => r.json()).then(d => setProject(d.project));
-    apiFetch(`/api/pm/projects/${projectId}/sections`).then(r => r.json()).then(d => setSections(d.sections ?? []));
+    loadProject();
     loadTasks();
-  }, [projectId, loadTasks]);
+  }, [loadProject, loadTasks]);
+
+  /*
+   * Re-read the board when the tab comes back.
+   *
+   * Live updates arrive only over the Pusher socket, and a backgrounded tab is
+   * throttled hard enough that the socket drops. pusher-js reconnects on
+   * return, but Pusher does not replay what was missed and nothing here asked
+   * for it — so every task created, moved or completed while someone was in
+   * another tab was simply absent until they reloaded by hand.
+   *
+   * Rate-limited because these fire on every alt-tab, and flicking between two
+   * tabs must not turn into a request per flick.
+   */
+  const lastLoadAt = useRef(Date.now());
+  useEffect(() => {
+    const resync = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastLoadAt.current < 10_000) return;
+      lastLoadAt.current = Date.now();
+      loadProject();
+      loadTasks();
+    };
+    document.addEventListener("visibilitychange", resync);
+    window.addEventListener("focus", resync);
+    return () => {
+      document.removeEventListener("visibilitychange", resync);
+      window.removeEventListener("focus", resync);
+    };
+  }, [loadProject, loadTasks]);
 
   // The task panel reports each write it makes; reload the list behind it so
   // due dates, assignees and the rest show without a page refresh. Debounced
@@ -109,6 +157,22 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
   const setView = (v: string) => {
     router.push(`?view=${v}`, { scroll: false });
   };
+
+  if (!project && loadFailed) return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 12, padding: 24, textAlign: "center" }}>
+      <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>This project could not be loaded.</p>
+      <p style={{ fontSize: 13.5, color: "var(--text-muted)", maxWidth: 340 }}>
+        The request did not come back. Nothing has been lost — it is usually a
+        blip on the way to the server.
+      </p>
+      <button
+        onClick={() => { loadProject(); loadTasks(); }}
+        style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13.5, cursor: "pointer" }}
+      >
+        Try again
+      </button>
+    </div>
+  );
 
   if (!project) return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
