@@ -4,7 +4,7 @@ import "./globals.css";
 // Shared suite chrome. Relative rather than the @erp-ui alias: tsconfig paths
 // are resolved for module imports, not guaranteed for the CSS pipeline.
 import "../vendor/erp-ui/erp-ui.css";
-import { StaleBuildReloader } from "@/components/StaleBuildReloader";
+import { StaleBuildReloader } from "@erp-ui";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
