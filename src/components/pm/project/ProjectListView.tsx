@@ -1,6 +1,8 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/base-path";
+import { getOrgUsers } from "@/lib/pm-lookups";
+import { RECENT_COMPLETED_DAYS, type CompletedScope } from "@/lib/pm/completed-scope";
 import { NO_SECTION_KEY, NO_SECTION_LABEL, hasNoVisibleSection } from "@/lib/pm/sections";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -24,6 +26,9 @@ interface ProjectListViewProps {
   setTasks: (t: Task[]) => void;
   onTaskClick: (id: string) => void;
   activeTaskId?: string | null;
+  /** What the page loaded; anything short of "all" offers the rest below. */
+  completedScope?: CompletedScope;
+  onLoadAllCompleted?: () => void;
 }
 type SortField = "position" | "dueDate" | "priority" | "title" | "createdAt" | "updatedAt";
 type GroupBy = "section" | "assignee" | "priority" | "status";
@@ -979,6 +984,7 @@ function buildGroups(tasks: Task[], groupBy: GroupBy, sections: Section[]): Task
 
 export function ProjectListView({
   projectId, project, sections, tasks, setSections, setTasks, onTaskClick, activeTaskId,
+  completedScope = "all", onLoadAllCompleted,
 }: ProjectListViewProps) {
   // Toolbar state
   const [sortField, setSortField] = useState<SortField>("position");
@@ -1020,7 +1026,7 @@ export function ProjectListView({
   }, []);
 
   useEffect(() => {
-    apiFetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
+    getOrgUsers().then(setOrgUsers).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -1355,6 +1361,23 @@ export function ProjectListView({
                 <span style={{ fontSize: "16px" }}>+</span> Add section
               </button>
             )}
+          </div>
+        )}
+
+        {/* Older completed tasks are left on the server until asked for. */}
+        {completedScope !== "all" && filters.completion !== "incomplete" && onLoadAllCompleted && (
+          <div style={{ padding: "12px", display: "flex", alignItems: "center", gap: "10px", fontSize: "12.5px", color: "var(--text-muted)" }}>
+            <span>
+              {completedScope === "recent"
+                ? `Showing tasks completed in the last ${RECENT_COMPLETED_DAYS} days.`
+                : "Completed tasks are hidden."}
+            </span>
+            <button
+              onClick={onLoadAllCompleted}
+              style={{ padding: "4px 10px", border: "1px solid var(--border)", borderRadius: "6px", background: "var(--bg)", color: "var(--text-secondary)", fontSize: "12.5px", cursor: "pointer" }}
+            >
+              Load all completed tasks
+            </button>
           </div>
         )}
       </div>

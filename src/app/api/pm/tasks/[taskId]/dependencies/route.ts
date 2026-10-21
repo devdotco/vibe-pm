@@ -22,3 +22,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
   }).returning();
   return NextResponse.json({ dependency: dep }, { status: 201 });
 }
+
+/*
+ * The panel has asked for this on every open, and there was no GET — so the
+ * request 405'd, its .json() threw, and a task's existing dependencies never
+ * showed. Scoped like POST: the task must be this org's.
+ */
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
+  const user = await requireUser();
+  const { taskId } = await params;
+  const [task] = await db.select({ id: tasks.id }).from(tasks)
+    .where(and(eq(tasks.id, taskId), eq(tasks.orgId, user.orgId), isNull(tasks.deletedAt))).limit(1);
+  if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+  const dependencies = await db.select().from(taskDependencies)
+    .where(and(eq(taskDependencies.taskId, taskId), eq(taskDependencies.orgId, user.orgId)));
+  return NextResponse.json({ dependencies });
+}

@@ -5,6 +5,7 @@ import { ProjectListView } from "@/components/pm/project/ProjectListView";
 import { KanbanBoard, KanbanBoardSkeleton } from "@/components/pm/board/KanbanBoard";
 import { TaskDetailPanel } from "@/components/pm/task/TaskDetailPanel";
 import { getPusherClient } from "@/lib/pusher/client";
+import type { CompletedScope } from "@/lib/pm/completed-scope";
 import { apiFetch, withBase } from "@/lib/base-path";
 
 interface Project { id: string; name: string; color: string; status: string; description: string | null; orgId: string; }
@@ -41,12 +42,18 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
   // Sequenced so a slow response to an earlier load can never overwrite a
   // newer one — edits in the task panel fire these in quick bursts.
   const tasksLoadSeq = useRef(0);
+  /*
+   * Open tasks and the last month's completed ones, unless someone asks for
+   * the full history from the list. Loading everything made the orders board
+   * a ~9 MB, 8,000-row page for one open task — see completed-scope.ts.
+   */
+  const [completedScope, setCompletedScope] = useState<CompletedScope>("recent");
   const loadTasks = useCallback(() => {
     const seq = ++tasksLoadSeq.current;
-    apiFetch(`/api/pm/projects/${projectId}/tasks`).then(r => r.json()).then(d => {
+    apiFetch(`/api/pm/projects/${projectId}/tasks?completed=${completedScope}`).then(r => r.json()).then(d => {
       if (seq === tasksLoadSeq.current) setTasks(d.tasks ?? []);
     }).catch(() => {});
-  }, [projectId]);
+  }, [projectId, completedScope]);
 
   /*
    * `project` gates the whole page below, so a failure here used to strand it
@@ -68,10 +75,9 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
       .catch(() => {});
   }, [projectId]);
 
-  useEffect(() => {
-    loadProject();
-    loadTasks();
-  }, [loadProject, loadTasks]);
+  // Separate, so loading the full history re-reads only the tasks.
+  useEffect(() => { loadProject(); }, [loadProject]);
+  useEffect(() => { loadTasks(); }, [loadTasks]);
 
   /*
    * Re-read the board when the tab comes back.
@@ -250,6 +256,8 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
             setSections={setSections} setTasks={setTasks}
             onTaskClick={handleTaskClick}
             activeTaskId={selectedTaskId}
+            completedScope={completedScope}
+            onLoadAllCompleted={() => setCompletedScope("all")}
           />
         )}
         {view === "board" && (

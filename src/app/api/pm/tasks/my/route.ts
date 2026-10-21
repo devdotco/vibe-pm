@@ -1,18 +1,31 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { tasks, projects, sections, taskComments, taskAssignees, users } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
-import { eq, and, isNull, asc, sql, inArray, or } from 'drizzle-orm';
+import { eq, and, isNull, asc, sql, inArray, or, ne, gte } from 'drizzle-orm';
+import { parseCompletedScope, RECENT_COMPLETED_DAYS } from '@/lib/pm/completed-scope';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const user = await requireUser();
+  /*
+   * Same `completed` scope as a project's task list (lib/pm/completed-scope).
+   * Without it this returned every task ever assigned — 9,741 rows for one
+   * person with 86 open, by Oct 2026 — and My Tasks drew all of them.
+   */
+  const completed = parseCompletedScope(req.nextUrl.searchParams.get('completed'));
+  const completedCondition =
+    completed === 'none' ? ne(tasks.status, 'completed')
+    : completed === 'recent'
+      ? or(ne(tasks.status, 'completed'), gte(tasks.completedAt, new Date(Date.now() - RECENT_COMPLETED_DAYS * 24 * 60 * 60 * 1000)))
+      : undefined;
 
-  // Find all task IDs where user is assigned via the multi-assignee table
-  const assigneeTaskRows = await db
+  // Task IDs where user is assigned via the multi-assignee table — a subquery
+  // rather than a list fetched first: for the busiest people that list ran to
+  // thousands of ids, every one of them sent back as a bind parameter.
+  const assigneeTaskIds = db
     .select({ taskId: taskAssignees.taskId })
     .from(taskAssignees)
     .where(eq(taskAssignees.userId, user.id));
-  const assigneeTaskIds = assigneeTaskRows.map(r => r.taskId);
 
   // Tasks where user is assignee (legacy single-assignee OR multi-assignee table)
   const rows = await db
@@ -30,8 +43,9 @@ export async function GET() {
       isNull(tasks.deletedAt),
       or(
         eq(tasks.assigneeId, user.id),
-        assigneeTaskIds.length > 0 ? inArray(tasks.id, assigneeTaskIds) : sql`false`,
+        inArray(tasks.id, assigneeTaskIds),
       ),
+      completedCondition,
     ))
     .orderBy(asc(tasks.dueDate));
 

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { tasks, taskAssignees, users, taskComments, taskAttachments } from '@/lib/db/schema';
 import { requireUser } from '@/lib/auth/session';
-import { eq, and, isNull, asc, inArray, sql } from 'drizzle-orm';
+import { eq, and, isNull, asc, inArray, sql, ne, or, gte } from 'drizzle-orm';
+import { parseCompletedScope, RECENT_COMPLETED_DAYS } from '@/lib/pm/completed-scope';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   const user = await requireUser();
@@ -15,6 +16,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
   // just edited instead of re-reading every task in the project. Top-level or
   // not: the caller decides where a subtask's row belongs.
   const taskId = searchParams.get('taskId');
+  /*
+   * Which completed tasks to include: none, the last RECENT_COMPLETED_DAYS, or
+   * all of them (the default, so callers that never asked keep what they got).
+   *
+   * The board asks for `recent`. Imported projects are almost entirely history
+   * — Top Tier Team Orders was 8,128 top-level tasks with ONE open — and
+   * shipping all of it made every board open a ~9 MB download and an
+   * 8,000-row render. Open is `status <> 'completed'`, not `completed_at IS
+   * NULL`: a handful of imported rows are completed with no timestamp.
+   */
+  const completed = parseCompletedScope(searchParams.get('completed'));
 
   const conditions = [
     eq(tasks.projectId, projectId),
@@ -32,6 +44,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
   }
 
   if (status) conditions.push(eq(tasks.status, status));
+  if (!taskId && completed === 'none') {
+    conditions.push(ne(tasks.status, 'completed'));
+  } else if (!taskId && completed === 'recent') {
+    const since = new Date(Date.now() - RECENT_COMPLETED_DAYS * 24 * 60 * 60 * 1000);
+    conditions.push(or(ne(tasks.status, 'completed'), gte(tasks.completedAt, since))!);
+  }
   if (assigneeId) conditions.push(eq(tasks.assigneeId, assigneeId));
 
   const rows = await db.select().from(tasks)

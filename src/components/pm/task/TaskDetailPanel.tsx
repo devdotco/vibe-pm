@@ -468,19 +468,21 @@ export function TaskDetailPanel({ taskId, onClose, onChanged }: { taskId: string
     el.style.height = Math.min(el.scrollHeight, 480) + "px";
   };
 
+  // One request for everything the panel shows — see tasks/[taskId]/panel.
+  // It was nine, each its own round trip and session check.
   const loadAll = useCallback(() => {
-    apiFetch(`/api/pm/tasks/${taskId}`).then(r => r.json()).then(d => {
-      setTask(d.task);
+    apiFetch(`/api/pm/tasks/${taskId}/panel`).then(r => r.json()).then(d => {
+      setTask(d.task ?? null);
       setCustomFields((d.task?.customFields as Record<string, string>) ?? {});
-    });
-    apiFetch(`/api/pm/tasks/${taskId}/watch`).then(r => r.json()).then(d => setWatching(d.watching ?? false));
-    apiFetch(`/api/pm/tasks/${taskId}/watchers`).then(r => r.json()).then(d => setWatcherCount((d.watchers ?? []).length));
-    apiFetch(`/api/pm/tasks/${taskId}/recurrence`).then(r => r.json()).then(d => setRecurrence(d.recurrence));
-    apiFetch(`/api/pm/tasks/${taskId}/activity`).then(r => r.json()).then(d => setFeed(d.feed ?? []));
-    apiFetch(`/api/pm/tasks/${taskId}/subtasks`).then(r => r.json()).then(d => setSubtasks(d.subtasks ?? []));
-    apiFetch(`/api/pm/tasks/${taskId}/assignees`).then(r => r.json()).then(d => setAssignees(d.assignees ?? []));
-    apiFetch(`/api/pm/tasks/${taskId}/dependencies`).then(r => r.json()).then(d => setDependencies(d.dependencies ?? []));
-    apiFetch(`/api/pm/tasks/${taskId}/attachments`).then(r => r.json()).then(d => setAttachments(d.attachments ?? []));
+      setWatching(d.watching ?? false);
+      setWatcherCount(d.watcherCount ?? 0);
+      setRecurrence(d.recurrence ?? null);
+      setFeed(d.feed ?? []);
+      setSubtasks(d.subtasks ?? []);
+      setAssignees(d.assignees ?? []);
+      setDependencies(d.dependencies ?? []);
+      setAttachments(d.attachments ?? []);
+    }).catch(() => {});
   }, [taskId]);
 
   useEffect(() => {

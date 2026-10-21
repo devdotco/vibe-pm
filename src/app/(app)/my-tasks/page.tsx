@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { format, parseISO, isBefore, startOfDay, endOfDay, addDays } from "date-fns";
 import { apiFetch } from "@/lib/base-path";
 import { withBase } from "@/lib/base-path";
+import { RECENT_COMPLETED_DAYS, type CompletedScope } from "@/lib/pm/completed-scope";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -362,13 +363,13 @@ function TaskItem({
 // ── Section group ─────────────────────────────────────────────────────────────
 
 function SectionGroup({
-  name, rows, allRows, onToggle,
+  name, rows, subtasksByParent, onToggle,
 }: {
-  name: string; rows: TaskRow[]; allRows: TaskRow[];
+  name: string; rows: TaskRow[]; subtasksByParent: Map<string, TaskRow[]>;
   onToggle: (id: string, status: string) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  const getSubtasks = (taskId: string) => allRows.filter(r => r.task.parentTaskId === taskId);
+  const getSubtasks = (taskId: string) => subtasksByParent.get(taskId) ?? [];
 
   return (
     <div>
@@ -407,11 +408,15 @@ export default function MyTasksPage() {
   const [showFilter, setShowFilter] = useState(false);
   const [showSort, setShowSort] = useState(false);
 
+  // Open tasks and the last month's completed ones unless asked for all —
+  // see lib/pm/completed-scope.ts.
+  const [completedScope, setCompletedScope] = useState<CompletedScope>("recent");
   const loadTasks = useCallback(() => {
-    apiFetch("/api/pm/tasks/my")
+    apiFetch(`/api/pm/tasks/my?completed=${completedScope}`)
       .then(r => r.json())
-      .then((d: { tasks: TaskRow[] }) => { setRows(d.tasks ?? []); setLoading(false); });
-  }, []);
+      .then((d: { tasks: TaskRow[] }) => { setRows(d.tasks ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [completedScope]);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
 
@@ -426,6 +431,18 @@ export default function MyTasksPage() {
 
   // Compute displayed rows: top-level only, filtered, sorted
   const topLevel = rows.filter(r => !r.task.parentTaskId);
+  // Built once per load. Each section used to scan every row for every row
+  // it drew — quadratic, and ~95M comparisons for the busiest person's list.
+  const subtasksByParent = useMemo(() => {
+    const m = new Map<string, TaskRow[]>();
+    for (const r of rows) {
+      const p = r.task.parentTaskId;
+      if (!p) continue;
+      const list = m.get(p);
+      if (list) list.push(r); else m.set(p, [r]);
+    }
+    return m;
+  }, [rows]);
   const filtered = applyFilters(topLevel, filters);
   const sorted = applySort(filtered, sortField, sortDir);
 
@@ -598,10 +615,21 @@ export default function MyTasksPage() {
               Object.entries(grouped).map(([sectionName, sectionRows]) => (
                 <SectionGroup
                   key={sectionName} name={sectionName}
-                  rows={sectionRows} allRows={rows}
+                  rows={sectionRows} subtasksByParent={subtasksByParent}
                   onToggle={toggleComplete}
                 />
               ))
+            )}
+            {!loading && completedScope !== "all" && (
+              <div style={{ padding: "12px 24px", display: "flex", alignItems: "center", gap: "10px", fontSize: "12.5px", color: "var(--text-muted)" }}>
+                <span>Showing tasks completed in the last {RECENT_COMPLETED_DAYS} days.</span>
+                <button
+                  onClick={() => { setLoading(true); setCompletedScope("all"); }}
+                  style={{ padding: "4px 10px", border: "1px solid var(--border)", borderRadius: "6px", background: "var(--bg)", color: "var(--text-secondary)", fontSize: "12.5px", cursor: "pointer" }}
+                >
+                  Load all completed tasks
+                </button>
+              </div>
             )}
           </>
         )}
