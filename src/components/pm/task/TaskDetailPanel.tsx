@@ -1,13 +1,14 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import Pusher from 'pusher-js';
 import { Skeleton, SkeletonText, SkeletonAvatar } from "@/components/ui/Skeleton";
 import { StatusSelect } from "@/components/pm/StatusBadge";
 import { PrioritySelect } from "@/components/pm/PriorityBadge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { formatDistanceToNow, parseISO, isValid } from "date-fns";
-import { apiFetch as baseApiFetch, withBase } from "@/lib/base-path";
+import { apiFetch as baseApiFetch } from "@/lib/base-path";
+import { getPusherClient } from "@/lib/pusher/client";
+import { getOrgUsers, getOrgProjects, getCurrentUserId } from "@/lib/pm-lookups";
 import { TaskFormsPanel } from "@/components/pm/forms/TaskFormsPanel";
 
 function safeRelativeTime(dateStr: string | null | undefined): string {
@@ -483,9 +484,10 @@ export function TaskDetailPanel({ taskId, onClose, onChanged }: { taskId: string
   }, [taskId]);
 
   useEffect(() => {
-    apiFetch("/api/pm/admin/users").then(r => r.json()).then(d => setOrgUsers(d.users ?? []));
-    apiFetch("/api/pm/me").then(r => r.json()).then(d => setCurrentUserId(d.id ?? null)).catch(() => {});
-    apiFetch("/api/pm/projects").then(r => r.json()).then(d => setOrgProjects(d.projects ?? []));
+    // Cached per tab — see lib/pm-lookups.ts.
+    getOrgUsers().then(setOrgUsers).catch(() => {});
+    getCurrentUserId().then(setCurrentUserId).catch(() => {});
+    getOrgProjects().then(setOrgProjects).catch(() => {});
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -512,16 +514,10 @@ export function TaskDetailPanel({ taskId, onClose, onChanged }: { taskId: string
 
   // Real-time updates via Pusher
   useEffect(() => {
-    const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
-    if (!pusherKey) { console.warn('[Pusher] NEXT_PUBLIC_PUSHER_KEY is not set — real-time updates disabled'); return; }
-    // authEndpoint added along with the private- prefix below: this channel
-    // used to be a plain public one, so pusher-js never needed to call an
-    // authorizer at all — subscribing was the whole story. A private channel
-    // with no authEndpoint just fails to subscribe.
-    const pusher = new Pusher(pusherKey, {
-      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER ?? "us2",
-      authEndpoint: withBase("/api/pusher/auth"),
-    });
+    // Shared with the project page; carries the authEndpoint this private
+    // channel needs — see lib/pusher/client.ts.
+    const pusher = getPusherClient();
+    if (!pusher) { console.warn('[Pusher] NEXT_PUBLIC_PUSHER_KEY is not set — real-time updates disabled'); return; }
     // Must match taskChannel() in src/lib/pusher/server.ts.
     const ch = pusher.subscribe(`private-task-${taskId}`);
     const refreshFeed = () => {
@@ -536,7 +532,10 @@ export function TaskDetailPanel({ taskId, onClose, onChanged }: { taskId: string
     };
     ch.bind('task.comment', refreshFeed);
     ch.bind('task.updated', refreshAll);
-    return () => { pusher.unsubscribe(`private-task-${taskId}`); pusher.disconnect(); };
+    // unbind first: on a shared client an unsubscribe that lands mid-handshake
+    // keeps the channel object, and re-opening the same task would stack a
+    // second set of handlers on it.
+    return () => { ch.unbind_all(); pusher.unsubscribe(`private-task-${taskId}`); };
   }, [taskId]);
 
   const save = useCallback((patch: Partial<Task>) => {

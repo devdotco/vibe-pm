@@ -8,7 +8,11 @@ const pool =
   globalForDb.pool ??
   new Pool({
     connectionString: process.env.DATABASE_URL,
-    max: 10,
+    // Was 10. Every request checks its session against the database first, and
+    // opening one task fans out into a dozen requests, so a single person
+    // could take the whole pool and queue everyone else behind them. Postgres
+    // allows 100 and this app is its only client.
+    max: 25,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
   });

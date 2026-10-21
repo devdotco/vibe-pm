@@ -22,6 +22,8 @@ psql "$DATABASE_URL" -f drizzle/0004_user_per_org.sql 2>&1 | grep -v "^psql\|alr
 psql "$DATABASE_URL" -f drizzle/0005_storage_roles.sql 2>&1 | grep -v "^psql\|already exists\|duplicate" || true
 # 0006: the forms tables. Every statement is IF NOT EXISTS.
 psql "$DATABASE_URL" -f drizzle/0006_forms.sql 2>&1 | grep -v "^psql\|already exists\|duplicate" || true
+# 0007: indexes for the board and task panel. Every statement is IF NOT EXISTS.
+psql "$DATABASE_URL" -f drizzle/0007_perf_indexes.sql 2>&1 | grep -v "^psql\|already exists\|duplicate" || true
 echo "[startup] Incremental migrations done."
 
 echo "[startup] Starting Next.js..."

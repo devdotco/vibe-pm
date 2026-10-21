@@ -13,7 +13,7 @@ import {
   index,
   numeric,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // ── Teams ─────────────────────────────────────────────────────────────────────
 
@@ -163,6 +163,9 @@ export const tasks = pgTable(
     index("tasks_org_status_idx").on(t.orgId, t.status),
     index("tasks_parent_idx").on(t.parentTaskId),
     index("tasks_source_message_idx").on(t.sourceMessageId),
+    index("tasks_project_parent_position_live_idx")
+      .on(t.projectId, t.parentTaskId, t.position)
+      .where(sql`${t.deletedAt} IS NULL`),
   ]
 );
 
@@ -196,7 +199,9 @@ export const taskDependencies = pgTable(
 
 // ── Task Activity & Comments ───────────────────────────────────────────────────
 
-export const taskComments = pgTable("task_comments", {
+export const taskComments = pgTable(
+  "task_comments",
+  {
   id: uuid("id").primaryKey().defaultRandom(),
   taskId: uuid("task_id")
     .notNull()
@@ -209,9 +214,13 @@ export const taskComments = pgTable("task_comments", {
   editedAt: timestamp("edited_at", { withTimezone: true }),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+  },
+  (t) => [index("task_comments_task_idx").on(t.taskId)]
+);
 
-export const taskAttachments = pgTable("task_attachments", {
+export const taskAttachments = pgTable(
+  "task_attachments",
+  {
   id: uuid("id").primaryKey().defaultRandom(),
   taskId: uuid("task_id")
     .notNull()
@@ -226,7 +235,9 @@ export const taskAttachments = pgTable("task_attachments", {
   // in the container's /tmp and are gone unless the one-off copy ran first.
   storageKey: text("storage_key"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+  },
+  (t) => [index("task_attachments_task_idx").on(t.taskId)]
+);
 
 export const taskActivity = pgTable(
   "task_activity",

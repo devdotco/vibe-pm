@@ -11,6 +11,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
   const status = searchParams.get('status');
   const assigneeId = searchParams.get('assigneeId');
   const parentTaskId = searchParams.get('parentTaskId');
+  // One row, in the same shape as the list, so the board can refresh the task
+  // just edited instead of re-reading every task in the project. Top-level or
+  // not: the caller decides where a subtask's row belongs.
+  const taskId = searchParams.get('taskId');
 
   const conditions = [
     eq(tasks.projectId, projectId),
@@ -19,7 +23,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
   ];
 
   // If parentTaskId is specified, fetch subtasks; otherwise fetch top-level tasks
-  if (parentTaskId) {
+  if (taskId) {
+    conditions.push(eq(tasks.id, taskId));
+  } else if (parentTaskId) {
     conditions.push(eq(tasks.parentTaskId, parentTaskId));
   } else {
     conditions.push(isNull(tasks.parentTaskId));
@@ -50,7 +56,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
   }
 
   // Count subtasks per task
-  const subtaskCounts = parentTaskId ? [] : await db
+  const subtaskCounts = parentTaskId && !taskId ? [] : await db
     .select({
       parentTaskId: tasks.parentTaskId,
       count: sql<number>`COUNT(*)`.mapWith(Number),

@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { ProjectListView } from "@/components/pm/project/ProjectListView";
 import { KanbanBoard, KanbanBoardSkeleton } from "@/components/pm/board/KanbanBoard";
 import { TaskDetailPanel } from "@/components/pm/task/TaskDetailPanel";
-import PusherClient from "pusher-js";
+import { getPusherClient } from "@/lib/pusher/client";
 import { apiFetch, withBase } from "@/lib/base-path";
 
 interface Project { id: string; name: string; color: string; status: string; description: string | null; orgId: string; }
@@ -37,7 +37,6 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
   const handleTaskClose = () => {
     router.push(`?view=${view}`, { scroll: false });
   };
-  const pusherRef = useRef<PusherClient | null>(null);
 
   // Sequenced so a slow response to an earlier load can never overwrite a
   // newer one — edits in the task panel fire these in quick bursts.
@@ -103,28 +102,55 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
     };
   }, [loadProject, loadTasks]);
 
-  // The task panel reports each write it makes; reload the list behind it so
-  // due dates, assignees and the rest show without a page refresh. Debounced
-  // because one edit can be several writes (assignee add, then the feed).
+  /*
+   * Re-read ONE task's row and put it in place.
+   *
+   * This used to be loadTasks(): every assignee or due-date change re-fetched
+   * the whole project, and the orders project holds 8,000+ tasks, so each
+   * one-field edit cost a multi-megabyte download and a full re-render — the
+   * "few seconds per update" people reported.
+   *
+   * A subtask has no row of its own on the board; its parent's counts are
+   * what change, so that row is re-read instead. A task that comes back empty
+   * was deleted or moved to another project, and leaves the list.
+   */
+  const refreshTask = useCallback((id: string) => {
+    apiFetch(`/api/pm/projects/${projectId}/tasks?taskId=${encodeURIComponent(id)}`)
+      .then(r => r.json())
+      .then((d: { tasks?: Task[] }) => {
+        const row = d.tasks?.[0];
+        if (!row) {
+          setTasks(prev => prev.filter(t => t.id !== id));
+        } else if (row.parentTaskId) {
+          refreshTask(row.parentTaskId);
+        } else {
+          setTasks(prev => prev.some(t => t.id === id)
+            ? prev.map(t => t.id === id ? row : t)
+            : [...prev, row]);
+        }
+      })
+      .catch(() => {});
+  }, [projectId]);
+
+  // The task panel reports each write it makes; refresh that task's row behind
+  // it so due dates, assignees and the rest show without a page refresh.
+  // Debounced because one edit can be several writes (assignee add, then the
+  // feed).
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleTaskChanged = useCallback(() => {
+    if (!selectedTaskId) return;
+    const id = selectedTaskId;
     if (reloadTimer.current) clearTimeout(reloadTimer.current);
-    reloadTimer.current = setTimeout(loadTasks, 250);
-  }, [loadTasks]);
+    reloadTimer.current = setTimeout(() => refreshTask(id), 250);
+  }, [selectedTaskId, refreshTask]);
   useEffect(() => () => { if (reloadTimer.current) clearTimeout(reloadTimer.current); }, []);
 
   // Pusher real-time subscriber
   useEffect(() => {
     if (!project?.orgId) return;
-    const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
-    const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER ?? "us2";
-    if (!pusherKey) return;
-
-    const client = new PusherClient(pusherKey, {
-      cluster: pusherCluster,
-      authEndpoint: withBase("/api/pusher/auth"),
-    });
-    pusherRef.current = client;
+    // Shared with the task panel — see lib/pusher/client.ts.
+    const client = getPusherClient();
+    if (!client) return;
 
     // Must match projectChannel() in src/lib/pusher/server.ts — private-
     // prefixed so Pusher actually calls authEndpoint instead of treating this
@@ -149,8 +175,8 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
     });
 
     return () => {
+      ch.unbind_all();
       client.unsubscribe(channelName);
-      client.disconnect();
     };
   }, [project?.orgId, projectId]);
 

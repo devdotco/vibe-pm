@@ -19,13 +19,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // application. Per the suite rule, only a real entitlement answer may shrink
   // it — a missing one must not.
   // Best-effort: an unreachable shell collapses the switcher to a label.
-  const orgs = await listShellOrgs();
-
+  //
   // White-label chrome and entitlement, both from the shell in one call.
-
   // Best-effort: brandVars(null) draws the erp.io defaults.
-
-  const { brand, modules } = await loadShellNav();
+  //
+  // Independent of each other, so asked together rather than one after the
+  // other — this layout renders on every navigation.
+  const [orgs, { brand, modules }] = await Promise.all([listShellOrgs(), loadShellNav()]);
 
 
   return (
