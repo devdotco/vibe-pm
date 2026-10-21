@@ -2,9 +2,17 @@
 set -e
 
 echo "[startup] Running migrations..."
-sed 's/--> statement-breakpoint/;/g' drizzle/0000_init.sql | \
-  psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=0 2>&1 | \
-  grep -v "^psql\|already exists\|duplicate" || true
+# 0000 is plain CREATE TABLE, not IF NOT EXISTS. Replayed on a built database
+# its first statement fails and the other ~56 log "current transaction is
+# aborted" on every boot, which reads as a broken deploy to anything watching
+# the logs (erp-watch). Only run it on an empty database.
+if [ -z "$(psql "$DATABASE_URL" -tAc "select to_regclass('public.automations')" 2>/dev/null)" ]; then
+  sed 's/--> statement-breakpoint/;/g' drizzle/0000_init.sql | \
+    psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=0 2>&1 | \
+    grep -v "^psql\|already exists\|duplicate" || true
+else
+  echo "[startup] Schema present, skipping 0000_init."
+fi
 echo "[startup] Migrations done."
 
 echo "[startup] Running incremental migrations..."
